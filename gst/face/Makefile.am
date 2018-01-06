@@ -16,11 +16,11 @@ plugin_LTLIBRARIES = libgstcheesefaceeffects.la
 ## Plugin 1 (cheese plugins example)
 
 # sources used to compile this plug-in
-libgstcheesefaceeffects_la_SOURCES = gstcheesefaceeffects.c gstcheesefacedetect.c
+libgstcheesefaceeffects_la_SOURCES = gstcheesefaceeffects.cpp gstcheesefacedetect.cpp
 
 # compiler and linker flags used to compile this plugin, set in configure.ac
-libgstcheesefaceeffects_la_CFLAGS = $(GST_CFLAGS)
-libgstcheesefaceeffects_la_LIBADD = $(GST_LIBS)
+libgstcheesefaceeffects_la_CXXFLAGS = $(GST_CXXFLAGS)
+libgstcheesefaceeffects_la_LIBADD = $(GST_LIBS) $(DLIB_LIBS)
 libgstcheesefaceeffects_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstcheesefaceeffects_la_LIBTOOLFLAGS = --tag=disable-static
 

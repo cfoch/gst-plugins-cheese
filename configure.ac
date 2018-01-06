@@ -70,8 +70,6 @@ PKG_CHECK_MODULES(DLIB, [
   CPPFLAGS="-std=c++11 $DLIB_CFLAGS"
   something_not_found=no
   AC_CHECK_HEADERS([dlib/image_processing/frontal_face_detector.h], [], [something_not_found=yes])
-  AC_MSG_ERROR(
-    [something not found: $something_not_found])
 ], [
   AC_MSG_ERROR([
       You need to install dlib.
