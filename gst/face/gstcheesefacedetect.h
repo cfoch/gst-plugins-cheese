@@ -1,8 +1,6 @@
 /*
  * GStreamer
- * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
- * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2018 Fabian Orccon <<user@hostname.org>>
+ * Copyright (C) 2018 Fabian Orccon<cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -48,6 +46,12 @@
 
 #include <gst/gst.h>
 #include <gst/opencv/gstopencvvideofilter.h>
+
+#include <opencv2/core/core_c.h>
+#if (CV_MAJOR_VERSION >= 3)
+#include <opencv2/imgproc/imgproc_c.h>
+#endif
+
 #include <dlib/image_processing/frontal_face_detector.h>
 #include <dlib/image_io.h>
 #include <dlib/gui_widgets.h>
@@ -74,14 +78,14 @@ struct _GstCheeseFaceDetect
 {
   GstOpencvVideoFilter element;
 
-  GstPad *sinkpad, *srcpad;
+  //GstPad *sinkpad, *srcpad;
 
-  gboolean silent;
+  //gboolean silent;
 };
 
 struct _GstCheeseFaceDetectClass 
 {
-  GstElementClass parent_class;
+  GstOpencvVideoFilterClass parent_class;
 };
 
 GType gst_cheese_face_detect_get_type (void);

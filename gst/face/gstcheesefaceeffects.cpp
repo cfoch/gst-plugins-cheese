@@ -63,8 +63,8 @@ cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
    *
    * exchange the string 'Template cheesefaceeffects' with your description
    */
-  return gst_element_register (cheesefaceeffects, "cheese", GST_RANK_NONE,
-      gst_cheese_face_detect_get_type ());
+  return gst_element_register (cheesefaceeffects, "cheesefacedetect",
+      GST_RANK_NONE, gst_cheese_face_detect_get_type ());
 }
 
 /* PACKAGE: this is usually set by autotools depending on some _INIT macro

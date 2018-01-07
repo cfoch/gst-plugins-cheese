@@ -61,8 +61,14 @@
 #endif
 
 #include <gst/gst.h>
+#include <cstdio>
+#include <iostream>
+#include <vector>
 
 #include "gstcheesefacedetect.h"
+
+using namespace std;
+using namespace dlib;
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
@@ -87,17 +93,17 @@ enum
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE ("RGB"))
     );
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE ("RGB"))
     );
 
 #define gst_cheese_face_detect_parent_class parent_class
-G_DEFINE_TYPE (GstCheeseFaceDetect, gst_cheese_face_detect, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE (GstCheeseFaceDetect, gst_cheese_face_detect, GST_TYPE_OPENCV_VIDEO_FILTER);
 
 static void gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
@@ -107,6 +113,9 @@ static void gst_cheese_face_detect_get_property (GObject * object, guint prop_id
 static gboolean gst_cheese_face_detect_sink_event (GstPad * pad, GstObject * parent, GstEvent * event);
 static GstFlowReturn gst_cheese_face_detect_chain (GstPad * pad, GstObject * parent, GstBuffer * buf);
 
+static GstFlowReturn gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * filter,
+    GstBuffer * buf, IplImage * img);
+
 /* GObject vmethod implementations */
 
 /* initialize the cheesefacedetect's class */
@@ -115,9 +124,14 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
+  GstOpencvVideoFilterClass *gstopencvbasefilter_class;
 
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
+  gstopencvbasefilter_class = (GstOpencvVideoFilterClass *) klass;
+
+  gstopencvbasefilter_class->cv_trans_ip_func =
+      gst_cheese_face_detect_transform_ip;
 
   gobject_class->set_property = gst_cheese_face_detect_set_property;
   gobject_class->get_property = gst_cheese_face_detect_get_property;
@@ -146,6 +160,7 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
 static void
 gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 {
+/*
   filter->sinkpad = gst_pad_new_from_static_template (&sink_factory, "sink");
   gst_pad_set_event_function (filter->sinkpad,
                               GST_DEBUG_FUNCPTR(gst_cheese_face_detect_sink_event));
@@ -159,6 +174,9 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   gst_element_add_pad (GST_ELEMENT (filter), filter->srcpad);
 
   filter->silent = FALSE;
+*/
+  gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
+      TRUE);
 }
 
 static void
@@ -168,9 +186,9 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    case PROP_SILENT:
+    /*case PROP_SILENT:
       filter->silent = g_value_get_boolean (value);
-      break;
+      break;*/
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -184,13 +202,33 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    case PROP_SILENT:
+    /*case PROP_SILENT:
       g_value_set_boolean (value, filter->silent);
-      break;
+      break;*/
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+}
+
+/* chain function
+ * this function does the actual processing
+ */
+static GstFlowReturn
+gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
+    GstBuffer * buf, IplImage * img)
+{
+  int i;
+  GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
+  cv_image<bgr_pixel> dlib_img (img);
+  frontal_face_detector detector = get_frontal_face_detector();
+  std::vector<rectangle> dets = detector(dlib_img);
+
+  for (i = 0; i < dets.size(); i++) {
+    cout << "face number " << i + 1 << endl;
+  }
+
+  return GST_FLOW_OK;
 }
 
 /* GstElement vmethod implementations */
@@ -229,18 +267,4 @@ gst_cheese_face_detect_sink_event (GstPad * pad, GstObject * parent, GstEvent * 
 /* chain function
  * this function does the actual processing
  */
-static GstFlowReturn
-gst_cheese_face_detect_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
-{
-  GstCheeseFaceDetect *filter;
-
-  filter = GST_CHEESEFACEDETECT (parent);
-
-  if (filter->silent == FALSE)
-    g_print ("I'm plugged, therefore I'm in.\n");
-
-  /* just push out the incoming buffer without touching it */
-  return gst_pad_push (filter->srcpad, buf);
-}
-
 

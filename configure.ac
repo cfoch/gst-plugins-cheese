@@ -46,7 +46,7 @@ PKG_CHECK_MODULES(GST, [
   gstreamer-1.0 >= $GST_REQUIRED
   gstreamer-base-1.0 >= $GST_REQUIRED
   gstreamer-controller-1.0 >= $GST_REQUIRED
-  gstreamer-audio-1.0 >= $GST_REQUIRED
+  gstreamer-rtp-1.0 >= $GST_REQUIRED
 ], [
   AC_SUBST(GST_CFLAGS)
   AC_SUBST(GST_LIBS)
@@ -58,6 +58,40 @@ PKG_CHECK_MODULES(GST, [
       on RPM-based systems gstreamer1.0-devel, libgstreamer1.0-devel
       or similar. The minimum version required is $GST_REQUIRED.
   ])
+])
+
+
+PKG_CHECK_MODULES(OPENCV, opencv >= 2.3.0 opencv <= 3.2.0 , [
+  AC_PROG_CXX
+  AC_LANG([C++])
+  OLD_CPPFLAGS=$CPPFLAGS
+  CPPFLAGS=$OPENCV_CFLAGS
+  something_not_found=no
+  AC_CHECK_HEADERS([opencv2/core/core_c.h \
+                    opencv2/core/version.hpp \
+                    opencv2/highgui/highgui_c.h \
+                    opencv2/imgproc/imgproc.hpp \
+                    opencv2/imgproc/imgproc_c.h \
+                    opencv2/objdetect/objdetect.hpp \
+                    opencv2/video/background_segm.hpp], [], [something_not_found=yes])
+
+  dnl Only required for OpenCV >= 3, we have compat code for older versions
+  PKG_CHECK_MODULES(OPENCV_3, opencv >= 3, [
+    dnl check opencv_contrib headers (not always present in opencv distributions)
+    AC_CHECK_HEADERS([opencv2/bgsegm.hpp], [], [something_not_found=yes])],
+    [NOT_A_PROBLEM=yes])
+
+  CPPFLAGS=$OLD_CPPFLAGS
+  AC_LANG([C])
+
+  if test $something_not_found = "yes"; then
+    AC_MSG_RESULT([not all opencv2 headers were found])
+    HAVE_OPENCV="no"
+  else
+    HAVE_OPENCV="yes"
+  fi
+], [
+  HAVE_OPENCV="no"
 ])
 
 PKG_CHECK_MODULES(DLIB, [
@@ -87,6 +121,11 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([ ], [ ])], [
   AC_MSG_RESULT([no])
 ])
 
+dnl AX_APPEND_COMPILE_FLAGS([-std=c++11 -O3 -lpthread],[CFLAGS])
+
+CFLAGS="-Wall -std=c++11 -O3 -lpthread"
+
+
 dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then
   plugindir="$HOME/.gstreamer-1.0/plugins"
@@ -94,6 +133,7 @@ else
   plugindir="\$(libdir)/gstreamer-1.0"
 fi
 AC_SUBST(plugindir)
+
 
 dnl set proper LDFLAGS for plugins
 GST_PLUGIN_LDFLAGS='-module -avoid-version -export-symbols-regex [_]*\(gst_\|Gst\|GST_\).*'
