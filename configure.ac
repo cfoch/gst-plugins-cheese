@@ -110,8 +110,6 @@ AC_SUBST(GST_PLUGIN_LDFLAGS)
 
 AC_CONFIG_FILES([
 Makefile
-dnl gst/Makefile
-dnl gst/face/Makefile
 examples/Makefile
 examples/detector/Makefile
 ])

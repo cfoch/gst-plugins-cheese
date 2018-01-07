@@ -1,3 +1,3 @@
-SUBDIRS = gst examples
+SUBDIRS = examples
 
 EXTRA_DIST = autogen.sh
