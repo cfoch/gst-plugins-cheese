@@ -45,8 +45,6 @@ dnl etc.
 PKG_CHECK_MODULES(GST, [
   gstreamer-1.0 >= $GST_REQUIRED
   gstreamer-base-1.0 >= $GST_REQUIRED
-  gstreamer-controller-1.0 >= $GST_REQUIRED
-  gstreamer-rtp-1.0 >= $GST_REQUIRED
 ], [
   AC_SUBST(GST_CFLAGS)
   AC_SUBST(GST_LIBS)
@@ -60,53 +58,29 @@ PKG_CHECK_MODULES(GST, [
   ])
 ])
 
-
-PKG_CHECK_MODULES(OPENCV, opencv >= 2.3.0 opencv <= 3.2.0 , [
-  AC_PROG_CXX
-  AC_LANG([C++])
-  OLD_CPPFLAGS=$CPPFLAGS
-  CPPFLAGS=$OPENCV_CFLAGS
-  something_not_found=no
-  AC_CHECK_HEADERS([opencv2/core/core_c.h \
-                    opencv2/core/version.hpp \
-                    opencv2/highgui/highgui_c.h \
-                    opencv2/imgproc/imgproc.hpp \
-                    opencv2/imgproc/imgproc_c.h \
-                    opencv2/objdetect/objdetect.hpp \
-                    opencv2/video/background_segm.hpp], [], [something_not_found=yes])
-
-  dnl Only required for OpenCV >= 3, we have compat code for older versions
-  PKG_CHECK_MODULES(OPENCV_3, opencv >= 3, [
-    dnl check opencv_contrib headers (not always present in opencv distributions)
-    AC_CHECK_HEADERS([opencv2/bgsegm.hpp], [], [something_not_found=yes])],
-    [NOT_A_PROBLEM=yes])
-
-  CPPFLAGS=$OLD_CPPFLAGS
-  AC_LANG([C])
-
-  if test $something_not_found = "yes"; then
-    AC_MSG_RESULT([not all opencv2 headers were found])
-    HAVE_OPENCV="no"
-  else
-    HAVE_OPENCV="yes"
-  fi
+PKG_CHECK_MODULES(OPENCV_3, [
+  opencv >= 3
 ], [
-  HAVE_OPENCV="no"
-])
+  dnl check opencv_contrib headers (not always present in opencv distributions)
+  AC_CHECK_HEADERS([opencv2/bgsegm.hpp], [], [something_not_found=yes])
+], [
+  AC_MSG_ERROR([
+      OpenCV not found.
+  ])
+]
+)
 
 PKG_CHECK_MODULES(DLIB, [
   dlib-1 > 19.0.0
-  dlib-1 < 19.99.99
 ], [
   AC_PROG_CXX
   AC_LANG([C++])
-  OLD_CPPFLAGS=$CPPFLAGS
-  CPPFLAGS="-std=c++11 $DLIB_CFLAGS"
+  AX_APPEND_COMPILE_FLAGS([$DLIB_CFLAGS], [CPPFLAGS])
   something_not_found=no
   AC_CHECK_HEADERS([dlib/image_processing/frontal_face_detector.h], [], [something_not_found=yes])
 ], [
   AC_MSG_ERROR([
-      You need to install dlib.
+      dlib not found.
   ])
 ])
 
@@ -120,11 +94,6 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([ ], [ ])], [
 ], [
   AC_MSG_RESULT([no])
 ])
-
-dnl AX_APPEND_COMPILE_FLAGS([-std=c++11 -O3 -lpthread],[CFLAGS])
-
-CFLAGS="-Wall -std=c++11 -O3 -lpthread"
-
 
 dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then
@@ -141,8 +110,10 @@ AC_SUBST(GST_PLUGIN_LDFLAGS)
 
 AC_CONFIG_FILES([
 Makefile
-gst/Makefile
-gst/face/Makefile
+dnl gst/Makefile
+dnl gst/face/Makefile
+examples/Makefile
+examples/detector/Makefile
 ])
 AC_OUTPUT
 
