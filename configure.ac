@@ -58,17 +58,47 @@ PKG_CHECK_MODULES(GST, [
   ])
 ])
 
-PKG_CHECK_MODULES(OPENCV_3, [
-  opencv >= 3
+HAVE_OPENCV = "no"
+PKG_CHECK_MODULES(OPENCV, opencv >= 2.3.0 opencv <= 3.4.0 , [
+  AC_PROG_CXX
+  AC_LANG([C++])
+  OLD_CPPFLAGS=$CPPFLAGS
+  CPPFLAGS=$OPENCV_CFLAGS
+  something_not_found=no
+
+  AC_CHECK_HEADERS([opencv2/core/core_c.h \
+                    opencv2/core/version.hpp \
+                    opencv2/highgui/highgui_c.h \
+                    opencv2/imgproc/imgproc.hpp \
+                    opencv2/imgproc/imgproc_c.h \
+                    opencv2/objdetect/objdetect.hpp \
+                    opencv2/video/background_segm.hpp], [], [something_not_found=yes])
+
+
+  dnl Only required for OpenCV >= 3, we have compat code for older versions
+  PKG_CHECK_MODULES(OPENCV_3, opencv >= 3, [
+    dnl check opencv_contrib headers (not always present in opencv distributions)
+    AC_CHECK_HEADERS([opencv2/bgsegm.hpp], [], [something_not_found=yes])],
+    [NOT_A_PROBLEM=yes])
+
+  CPPFLAGS=$OLD_CPPFLAGS
+  AC_LANG([C])
+
+  if test $something_not_found = "yes"; then
+    AC_MSG_RESULT([not all opencv2 headers were found])
+    AC_MSG_ERROR([Here 2])
+    HAVE_OPENCV="no"
+  else
+    HAVE_OPENCV="yes"
+  fi
 ], [
-  dnl check opencv_contrib headers (not always present in opencv distributions)
-  AC_CHECK_HEADERS([opencv2/bgsegm.hpp], [], [something_not_found=yes])
-], [
-  AC_MSG_ERROR([
-      OpenCV not found.
-  ])
-]
-)
+  AC_MSG_ERROR([Here 3])
+  HAVE_OPENCV="no"
+])
+
+if test $HAVE_OPENCV = "no"; then
+  AC_MSG_ERROR([OpenCV not found])
+fi
 
 PKG_CHECK_MODULES(DLIB, [
   dlib-1 > 19.0.0
@@ -95,6 +125,9 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([ ], [ ])], [
   AC_MSG_RESULT([no])
 ])
 
+CFLAGS = "-O2"
+CXXFLAGS = "-O2"
+
 dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then
   plugindir="$HOME/.gstreamer-1.0/plugins"
@@ -110,6 +143,8 @@ AC_SUBST(GST_PLUGIN_LDFLAGS)
 
 AC_CONFIG_FILES([
 Makefile
+gst/Makefile
+gst/face/Makefile
 examples/Makefile
 examples/detector/Makefile
 ])

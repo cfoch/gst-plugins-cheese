@@ -1,6 +1,6 @@
 /*
  * GStreamer
- * Copyright (C) 2018 Fabian Orccon<cfoch.fabian@gmail.com>
+ * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -53,8 +53,6 @@
 #endif
 
 #include <dlib/image_processing/frontal_face_detector.h>
-#include <dlib/image_io.h>
-#include <dlib/gui_widgets.h>
 #include <dlib/opencv.h>
 
 G_BEGIN_DECLS
@@ -77,6 +75,7 @@ typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
 struct _GstCheeseFaceDetect
 {
   GstOpencvVideoFilter element;
+  dlib::frontal_face_detector face_detector;
 
   //GstPad *sinkpad, *srcpad;
 

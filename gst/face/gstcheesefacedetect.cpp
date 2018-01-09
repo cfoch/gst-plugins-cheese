@@ -1,8 +1,6 @@
 /*
  * GStreamer
- * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
- * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2018 Fabian Orccon <<user@hostname.org>>
+ * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -86,6 +84,8 @@ enum
   PROP_SILENT
 };
 
+static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
+
 /* the capabilities of the inputs and outputs.
  *
  * describe the real formats here.
@@ -105,6 +105,7 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
 #define gst_cheese_face_detect_parent_class parent_class
 G_DEFINE_TYPE (GstCheeseFaceDetect, gst_cheese_face_detect, GST_TYPE_OPENCV_VIDEO_FILTER);
 
+static void gst_cheese_face_detect_finalize (GObject * obj);
 static void gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
@@ -133,6 +134,7 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
   gstopencvbasefilter_class->cv_trans_ip_func =
       gst_cheese_face_detect_transform_ip;
 
+  gobject_class->finalize = GST_DEBUG_FUNCPTR (gst_cheese_face_detect_finalize);
   gobject_class->set_property = gst_cheese_face_detect_set_property;
   gobject_class->get_property = gst_cheese_face_detect_get_property;
 
@@ -175,6 +177,8 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 
   filter->silent = FALSE;
 */
+ // filter->face_detector = get_frontal_face_detector();
+
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
 }
@@ -221,8 +225,9 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   int i;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
   cv_image<bgr_pixel> dlib_img (img);
-  frontal_face_detector detector = get_frontal_face_detector();
-  std::vector<rectangle> dets = detector(dlib_img);
+
+  //std::vector<rectangle> dets = filter->face_detector (dlib_img);
+  std::vector<rectangle>dets = mydetector(dlib_img);
 
   for (i = 0; i < dets.size(); i++) {
     cout << "face number " << i + 1 << endl;
@@ -264,7 +269,13 @@ gst_cheese_face_detect_sink_event (GstPad * pad, GstObject * parent, GstEvent * 
   return ret;
 }
 
-/* chain function
- * this function does the actual processing
- */
+static void
+gst_cheese_face_detect_finalize (GObject * obj)
+{
+  GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (obj);
 
+/*  if (filter->face_detector)
+    delete (filter->face_detector);
+*/
+  G_OBJECT_CLASS (gst_cheese_face_detect_parent_class)->finalize (obj);
+}

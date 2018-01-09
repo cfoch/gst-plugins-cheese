@@ -21,7 +21,7 @@ bin_PROGRAMS = detector
 # compiler and linker flags used to compile this plugin, set in configure.ac
 AM_CXXFLAGS = $(OPENCV_CFLAGS)
 detector_SOURCES = main.cpp
-detector_LIBADD = $(DLIB_LIBS) $(OPENCV_LIBS)
+detector_LDADD = $(DLIB_LIBS) $(OPENCV_LIBS)
 # detector_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 # detector_la_LIBTOOLFLAGS = --tag=disable-static
 
