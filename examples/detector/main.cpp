@@ -6,6 +6,15 @@
 #include <dlib/opencv.h>
 #include "opencv2/opencv.hpp"
 
+#include <gst/gst.h>
+#include <gst/opencv/gstopencvvideofilter.h>
+
+#include <opencv2/core/core_c.h>
+#if (CV_MAJOR_VERSION >= 3)
+#include <opencv2/imgproc/imgproc_c.h>
+#endif
+#include <chrono>
+
 using namespace cv;
 using namespace std;
 using namespace dlib;
@@ -49,8 +58,13 @@ main(int argc, const char ** argv)
     if (!cap.read (frame))
       break;
 
+	auto start = chrono::steady_clock::now();
     cv_image<bgr_pixel> dlib_image(frame);
     std::vector<dlib::rectangle> dets = detector(dlib_image);
+	auto end = chrono::steady_clock::now();
+    cout << "Elapsed time in miliseconds: " <<
+        chrono::duration_cast<chrono::milliseconds>(end - start).count() <<
+        "ms" << endl;
 
     for (i = 0; i < dets.size(); i++) {
         cv::Point tl, br;

@@ -224,14 +224,21 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
 {
   int i;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
+
   cv_image<bgr_pixel> dlib_img (img);
 
+  auto start = chrono::steady_clock::now();
   //std::vector<rectangle> dets = filter->face_detector (dlib_img);
   std::vector<rectangle>dets = mydetector(dlib_img);
 
   for (i = 0; i < dets.size(); i++) {
     cout << "face number " << i + 1 << endl;
   }
+  auto end = chrono::steady_clock::now();
+
+  cout << "Elapsed time in miliseconds: " <<
+      chrono::duration_cast<chrono::milliseconds>(end - start).count() <<
+      "ms" << endl;
 
   return GST_FLOW_OK;
 }
