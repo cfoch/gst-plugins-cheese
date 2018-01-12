@@ -71,6 +71,8 @@ using namespace dlib;
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
 
+#define DEFAULT_LANDMARK NULL
+
 /* Filter signals and args */
 enum
 {
@@ -82,7 +84,8 @@ enum
 {
   PROP_0,
   PROP_SILENT,
-  PROP_DISPLAY
+  PROP_DISPLAY,
+  PROP_LANDMARK
 };
 
 // static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
@@ -140,6 +143,12 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
       g_param_spec_boolean ("display", "Display",
           "Sets whether the detected faces should be highlighted in the output",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_LANDMARK,
+      g_param_spec_string ("landmark", "Landmark shape model",
+          "Location of the shape model. You can get one at "
+          "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
+          DEFAULT_LANDMARK,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_details_simple(gstelement_class,
     "CheeseFaceDetect",
@@ -162,8 +171,11 @@ static void
 gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 {
   filter->display = TRUE;
+  filter->landmark = NULL;
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
+  filter->shape_predictor = NULL;
+
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
@@ -176,11 +188,14 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    /*case PROP_SILENT:
-      filter->silent = g_value_get_boolean (value);
-      break;*/
     case PROP_DISPLAY:
       filter->display = g_value_get_boolean (value);
+      break;
+    case PROP_LANDMARK:
+      filter->landmark = g_value_dup_string (value);
+      filter->shape_predictor = new shape_predictor;
+      /* TODO: Handle error. For example, file does not exist. */
+      dlib::deserialize (filter->landmark) >> *filter->shape_predictor;
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -200,6 +215,9 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
       break;*/
     case PROP_DISPLAY:
       g_value_set_boolean (value, filter->display);
+      break;
+    case PROP_LANDMARK:
+      g_value_set_string (value, filter->landmark);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -279,6 +297,19 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       br = cv::Point(dets[i].right(), dets[i].bottom());
       cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
     }
+
+    if (filter->shape_predictor) {
+      dlib::full_object_detection shape =
+          (*filter->shape_predictor) (dlib_img, dets[i]);
+
+      if (filter->display) {
+        guint j;
+        for (j = 0; j < shape.num_parts (); j++) {
+          cv::Point pt (shape.part (j).x (), shape.part (j).y ());
+          cv::circle(cvImg, pt, 3, cv::Scalar (255, 0, 0), CV_FILLED);
+        }
+      }
+    }
   }
   cvImg.release ();
 
@@ -299,7 +330,9 @@ gst_cheese_face_detect_finalize (GObject * obj)
 
   cout << "bye :) " << endl;
   if (filter->face_detector)
-    delete (filter->face_detector);
+    delete filter->face_detector;
+  if (filter->shape_predictor)
+    delete filter->shape_predictor;
 
   G_OBJECT_CLASS (gst_cheese_face_detect_parent_class)->finalize (obj);
 }

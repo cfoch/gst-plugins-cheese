@@ -54,6 +54,8 @@
 #endif
 
 #include <dlib/image_processing/frontal_face_detector.h>
+#include <dlib/image_processing/render_face_detections.h>
+#include <dlib/image_processing.h>
 #include <dlib/opencv.h>
 
 #include <chrono>
@@ -78,12 +80,12 @@ typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
 struct _GstCheeseFaceDetect
 {
   GstOpencvVideoFilter element;
+
   gboolean display;
+  gchar *landmark;
+
   dlib::frontal_face_detector *face_detector;
-
-  //GstPad *sinkpad, *srcpad;
-
-  //gboolean silent;
+  dlib::shape_predictor *shape_predictor;
 };
 
 struct _GstCheeseFaceDetectClass 
