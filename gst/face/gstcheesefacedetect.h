@@ -47,6 +47,7 @@
 #include <gst/gst.h>
 #include <gst/opencv/gstopencvvideofilter.h>
 
+#include "opencv2/opencv.hpp"
 #include <opencv2/core/core_c.h>
 #if (CV_MAJOR_VERSION >= 3)
 #include <opencv2/imgproc/imgproc_c.h>
@@ -77,7 +78,8 @@ typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
 struct _GstCheeseFaceDetect
 {
   GstOpencvVideoFilter element;
-  dlib::frontal_face_detector face_detector;
+  gboolean display;
+  dlib::frontal_face_detector *face_detector;
 
   //GstPad *sinkpad, *srcpad;
 
