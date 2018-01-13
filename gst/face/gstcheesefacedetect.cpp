@@ -65,13 +65,9 @@
 
 #include "gstcheesefacedetect.h"
 
-using namespace std;
-using namespace dlib;
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
-
-#define DEFAULT_LANDMARK NULL
 
 /* Filter signals and args */
 enum
@@ -85,7 +81,8 @@ enum
   PROP_0,
   PROP_SILENT,
   PROP_DISPLAY,
-  PROP_LANDMARK
+  PROP_LANDMARK,
+  PROP_RECOGNITION_MODEL
 };
 
 // static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
@@ -145,10 +142,16 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_LANDMARK,
       g_param_spec_string ("landmark", "Landmark shape model",
-          "Location of the shape model. You can get one at "
+          "Location of the shape model. You can get one from "
           "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
-          DEFAULT_LANDMARK,
-          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          NULL, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_RECOGNITION_MODEL,
+      g_param_spec_string ("recognition", "ResNet recognition model",
+          "The location of the DNN recognition model responsible for face "
+          "recognition. You can get one from "
+          "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
+          NULL, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
 
   gst_element_class_set_details_simple(gstelement_class,
     "CheeseFaceDetect",
@@ -175,6 +178,7 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
   filter->shape_predictor = NULL;
+  filter->face_recognitor = NULL;
 
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
@@ -193,9 +197,16 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
       break;
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
-      filter->shape_predictor = new shape_predictor;
+      filter->shape_predictor = new dlib::shape_predictor;
       /* TODO: Handle error. For example, file does not exist. */
       dlib::deserialize (filter->landmark) >> *filter->shape_predictor;
+      break;
+    case PROP_RECOGNITION_MODEL:
+      filter->recognition_model = g_value_dup_string (value);
+      cout << "my recognition model: " << filter->recognition_model << endl;
+      /* TODO: Handle error. For example, file does not exist. */
+      filter->face_recognitor = new anet_type;
+      dlib::deserialize (filter->recognition_model) >> *filter->face_recognitor;
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -218,6 +229,9 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
       break;
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
+      break;
+    case PROP_RECOGNITION_MODEL:
+      g_value_set_string (value, filter->recognition_model);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -259,6 +273,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
   cv::Mat cvImg (cv::cvarrToMat (img));
   cv::Mat resizedImg;
+  std::vector<matrix<rgb_pixel>> face_chips;
 
 
   GValue facelist = G_VALUE_INIT;
@@ -279,6 +294,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
 
   for (i = 0; i < dets.size(); i++) {
     GstStructure *s;
+
     s = gst_structure_new ("face",
         "l", G_TYPE_UINT, dets[i].left (),
         "t", G_TYPE_UINT, dets[i].top (),
@@ -302,6 +318,13 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       dlib::full_object_detection shape =
           (*filter->shape_predictor) (dlib_img, dets[i]);
 
+      if (filter->face_recognitor) {
+        matrix<rgb_pixel> face_chip;
+        extract_image_chip (dlib_img,
+            get_face_chip_details (shape, 150, 0.25), face_chip);
+        face_chips.push_back (move (face_chip));
+      }
+
       if (filter->display) {
         guint j;
         for (j = 0; j < shape.num_parts (); j++) {
@@ -311,6 +334,13 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       }
     }
   }
+
+  if (filter->face_recognitor) {
+    std::vector<matrix<float, 0, 1>> face_descriptors =
+        (*filter->face_recognitor) (face_chips);
+    cout << "CALCULATING 128D vector" << endl;
+  }
+
   cvImg.release ();
 
   gst_structure_set_value ((GstStructure *) gst_message_get_structure (msg),
@@ -333,6 +363,8 @@ gst_cheese_face_detect_finalize (GObject * obj)
     delete filter->face_detector;
   if (filter->shape_predictor)
     delete filter->shape_predictor;
+  if (filter->face_recognitor)
+    delete filter->face_recognitor;
 
   G_OBJECT_CLASS (gst_cheese_face_detect_parent_class)->finalize (obj);
 }
