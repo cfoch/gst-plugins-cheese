@@ -6,10 +6,12 @@ from gi.repository import GObject
 
 from IPython import embed
 
+STEPPER_DIR = os.path.dirname(os.path.realpath(__file__))
+
 SHAPE_MODEL = "/home/cfoch/Documents/git/gst-plugins-cheese/shape_predictor_68_face_landmarks.dat"
 
 PEOPLE1_PATH = "/home/cfoch/Videos/people.ogv"
-PEOPLE2_PATH = "/home/cfoch/Videos/people.ogv"
+PEOPLE2_PATH = "/home/cfoch/Videos/people2.ogv"
 
 
 class Player(Gtk.Window):
@@ -23,8 +25,8 @@ class Player(Gtk.Window):
         os.environ["GTK_THEME"] = theme + ":dark"
 
         builder = Gtk.Builder()
-        builder.add_from_file("ui/example1.ui")
-        builder.add_from_file("ui/menu.ui")
+        builder.add_from_file(os.path.join(STEPPER_DIR, "ui/example1.ui"))
+        builder.add_from_file(os.path.join(STEPPER_DIR, "ui/menu.ui"))
         builder.connect_signals_full(self._builderConnectCb, self)
 
         self.viewer_box = builder.get_object("viewer_box")
@@ -58,7 +60,7 @@ class Player(Gtk.Window):
         self.facedetect.set_property("display-bounding-box", True)
         self.facedetect.set_property("display-id", True)
         self.facedetect.set_property("display-landmark", False)
-        self.facedetect.set_property("landmark", SHAPE_MODEL)
+        # self.facedetect.set_property("landmark", SHAPE_MODEL)
         self.facedetect.set_property("use-hungarian", True)
         self.facedetect.set_property("hungarian-delete-threshold", 10)
 
