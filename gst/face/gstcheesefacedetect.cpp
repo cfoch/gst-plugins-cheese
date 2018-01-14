@@ -81,8 +81,9 @@ enum
   PROP_0,
   PROP_SILENT,
   PROP_DISPLAY,
+  PROP_DISPLAY_ID,
   PROP_LANDMARK,
-  PROP_RECOGNITION_MODEL
+  PROP_USE_HUNGARIAN
 };
 
 // static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
@@ -140,17 +141,20 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
       g_param_spec_boolean ("display", "Display",
           "Sets whether the detected faces should be highlighted in the output",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_DISPLAY_ID,
+      g_param_spec_boolean ("display-ids", "Display the ID of each face",
+          "Sets whether to display the ID of each face",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_LANDMARK,
       g_param_spec_string ("landmark", "Landmark shape model",
           "Location of the shape model. You can get one from "
           "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
           NULL, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property (gobject_class, PROP_RECOGNITION_MODEL,
-      g_param_spec_string ("recognition", "ResNet recognition model",
-          "The location of the DNN recognition model responsible for face "
-          "recognition. You can get one from "
-          "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
-          NULL, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_USE_HUNGARIAN,
+      g_param_spec_boolean ("use-hungarian", "Display",
+          "Sets whether to use the Hungarian algorithm to matching faces in "
+          "the next frames.",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
 
   gst_element_class_set_details_simple(gstelement_class,
@@ -173,13 +177,17 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
 static void
 gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 {
+  filter->last_face_id = 0;
+  filter->frame_number = 1;
+
+  filter->use_hungarian = TRUE;
   filter->display = TRUE;
   filter->landmark = NULL;
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
   filter->shape_predictor = NULL;
-  filter->face_recognitor = NULL;
 
+  filter->faces = new std::map<guint, CheeseFace>;
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
@@ -195,18 +203,17 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     case PROP_DISPLAY:
       filter->display = g_value_get_boolean (value);
       break;
+    case PROP_DISPLAY_ID:
+      filter->display_id = g_value_get_boolean (value);
+      break;
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
       filter->shape_predictor = new dlib::shape_predictor;
       /* TODO: Handle error. For example, file does not exist. */
       dlib::deserialize (filter->landmark) >> *filter->shape_predictor;
       break;
-    case PROP_RECOGNITION_MODEL:
-      filter->recognition_model = g_value_dup_string (value);
-      cout << "my recognition model: " << filter->recognition_model << endl;
-      /* TODO: Handle error. For example, file does not exist. */
-      filter->face_recognitor = new anet_type;
-      dlib::deserialize (filter->recognition_model) >> *filter->face_recognitor;
+    case PROP_USE_HUNGARIAN:
+      filter->use_hungarian = g_value_get_boolean (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -221,17 +228,17 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    /*case PROP_SILENT:
-      g_value_set_boolean (value, filter->silent);
-      break;*/
     case PROP_DISPLAY:
       g_value_set_boolean (value, filter->display);
+      break;
+    case PROP_DISPLAY_ID:
+      g_value_set_boolean (value, filter->display_id);
       break;
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
       break;
-    case PROP_RECOGNITION_MODEL:
-      g_value_set_string (value, filter->recognition_model);
+    case PROP_USE_HUNGARIAN:
+      g_value_set_boolean (value, filter->use_hungarian);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -261,6 +268,21 @@ gst_cheese_face_detect_message_new (GstCheeseFaceDetect * filter,
   return gst_message_new_element (GST_OBJECT (filter), s);
 }
 
+static cv::Point
+calculate_centroid(cv::Point & p1, cv::Point & p2)
+{
+  return (p1 + p2) / 2;
+}
+
+static cv::Point
+calculate_centroid(dlib::rectangle & rectangle)
+{
+  cv::Point tl, br;
+  tl = cv::Point(rectangle.left(), rectangle.top());
+  br = cv::Point(rectangle.right(), rectangle.bottom());
+  return (tl + br) / 2;
+}
+
 /* chain function
  * this function does the actual processing
  */
@@ -268,13 +290,11 @@ static GstFlowReturn
 gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
 {
-  int i;
+  guint i;
   GstMessage *msg;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
   cv::Mat cvImg (cv::cvarrToMat (img));
   cv::Mat resizedImg;
-  std::vector<matrix<rgb_pixel>> face_chips;
-
 
   GValue facelist = G_VALUE_INIT;
   GValue facedata = G_VALUE_INIT;
@@ -292,9 +312,114 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   msg = gst_cheese_face_detect_message_new (filter, buf);
   g_value_init (&facelist, GST_TYPE_LIST);
 
+  /* Init faces */
+  if (filter->faces->empty () && filter->frame_number == 1) {
+    for (i = 0; i < dets.size(); i++) {
+      CheeseFace face_info;
+      face_info.last_detected_frame = filter->frame_number;
+      face_info.bounding_box = dets[i];
+      face_info.centroid = calculate_centroid(dets[i]);
+      (*filter->faces)[++filter->last_face_id] = face_info;
+    };
+  }
+
+  if (!filter->faces->empty() && filter->frame_number > 1) {
+    guint r, c;
+    HungarianAlgorithm HungAlgo;
+    std::vector<cv::Point> cur_centroids;
+    std::vector<std::vector<double>> cost_matrix;
+    std::vector<guint> faces_keys;
+    std::vector<CheeseFace *> faces_vals;
+    std::vector<int> assignment;
+
+    cout << "Calculate current centroids" << endl;
+
+    // Calculate current centroids.
+    for (i = 0; i < dets.size(); i++) {
+      cv::Point centroid = calculate_centroid(dets[i]);
+      cur_centroids.push_back(centroid);
+    }
+
+    /* Put the info of the previous detected faces in vectors */
+    for (auto &kv : (*filter->faces)) {
+      guint id = kv.first;
+      CheeseFace *face = &kv.second;
+      faces_keys.push_back(id);
+      faces_vals.push_back(face);
+    }
+
+    cout << "Initialize cost matrix" << endl;
+    /* Initialize cost matrix. */
+    for (r = 0; r < faces_vals.size (); r++) {
+      std::vector<double> row;
+      for (c = 0; c < cur_centroids.size (); c++) {
+        float dist;
+        dist = cv::norm (cv::Mat (cur_centroids[c]),
+            cv::Mat (faces_vals[r]->centroid));
+        row.push_back(dist);
+      }
+      cost_matrix.push_back(row);
+    }
+
+    /* Solve the Hungarian problem */
+    cout << "Solve the Hungarian problem" << endl;
+    HungAlgo.Solve(cost_matrix, assignment);
+
+    /* Reorder faces */
+    cout << "Reordering faces" << endl;
+    for (i = 0; i < faces_vals.size(); i++) {
+      if (assignment[i] == -1) {
+        cout << "A face was not detected" << endl;
+      } else {
+        faces_vals[i]->bounding_box = dets[assignment[i]];
+        faces_vals[i]->centroid = calculate_centroid (dets[assignment[i]]);
+        faces_vals[i]->last_detected_frame = filter->frame_number;
+      }
+    }
+  }
+
+  for (auto &kv : *filter->faces) {
+    guint id = kv.first;
+    CheeseFace face = kv.second;
+
+    if (filter->display) {
+      cv::Point tl, br;
+      tl = cv::Point(face.bounding_box.left(), face.bounding_box.top());
+      br = cv::Point(face.bounding_box.right(), face.bounding_box.bottom());
+      cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
+      if (filter->use_hungarian)
+        cv::putText (cvImg, std::to_string (id), face.centroid,
+            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (255, 0, 0));
+    }
+
+    if (filter->shape_predictor) {
+      dlib::full_object_detection shape =
+          (*filter->shape_predictor) (dlib_img, face.bounding_box);
+
+      /*if (filter->display) {
+        guint j;
+        for (j = 0; j < shape.num_parts (); j++) {
+          cv::Point pt (shape.part (j).x (), shape.part (j).y ());
+          cv::circle(cvImg, pt, 3, cv::Scalar (255, 0, 0), CV_FILLED);
+        }
+      }*/
+    }
+  }
+
+  /* For each face */
   for (i = 0; i < dets.size(); i++) {
     GstStructure *s;
+    /*
+    if (filter->faces->empty () && filter->frame_number == 1) {
+      CheeseFace face_info;
+      face_info.centroid = calculate_centroid(dets[i]);
+      face_info.last_detected_frame = filter->frame_number;
+      face_info.bounding_box = dets[i];
+      (*filter->faces)[filter->last_face_id] = face_info;
+    };
+    */
 
+    /*
     s = gst_structure_new ("face",
         "l", G_TYPE_UINT, dets[i].left (),
         "t", G_TYPE_UINT, dets[i].top (),
@@ -305,7 +430,9 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     g_value_take_boxed (&facedata, s);
     gst_value_list_append_value (&facelist, &facedata);
     g_value_unset (&facedata);
+    */
 
+    /*
     cout << "face number " << i + 1 << ": " << dets[i] << endl;
     if (filter->display) {
       cv::Point tl, br;
@@ -318,13 +445,6 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       dlib::full_object_detection shape =
           (*filter->shape_predictor) (dlib_img, dets[i]);
 
-      if (filter->face_recognitor) {
-        matrix<rgb_pixel> face_chip;
-        extract_image_chip (dlib_img,
-            get_face_chip_details (shape, 150, 0.25), face_chip);
-        face_chips.push_back (move (face_chip));
-      }
-
       if (filter->display) {
         guint j;
         for (j = 0; j < shape.num_parts (); j++) {
@@ -333,23 +453,23 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         }
       }
     }
+    */
   }
 
-  if (filter->face_recognitor) {
-    std::vector<matrix<float, 0, 1>> face_descriptors =
-        (*filter->face_recognitor) (face_chips);
-    cout << "CALCULATING 128D vector" << endl;
-  }
 
   cvImg.release ();
-
+  /*
   gst_structure_set_value ((GstStructure *) gst_message_get_structure (msg),
       "faces", &facelist);
+  */
   auto end = chrono::steady_clock::now();
 
   cout << "Elapsed time in miliseconds: " <<
       chrono::duration_cast<chrono::milliseconds>(end - start).count() <<
       "ms" << endl;
+
+  filter->frame_number++;
+
   return GST_FLOW_OK;
 }
 
@@ -363,8 +483,6 @@ gst_cheese_face_detect_finalize (GObject * obj)
     delete filter->face_detector;
   if (filter->shape_predictor)
     delete filter->shape_predictor;
-  if (filter->face_recognitor)
-    delete filter->face_recognitor;
 
   G_OBJECT_CLASS (gst_cheese_face_detect_parent_class)->finalize (obj);
 }
