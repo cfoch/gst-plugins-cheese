@@ -67,6 +67,7 @@
 
 
 #define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
+#define DEFAULT_SCALE_FACTOR                              1.0
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
@@ -87,7 +88,8 @@ enum
   PROP_DISPLAY_LANDMARK,
   PROP_LANDMARK,
   PROP_USE_HUNGARIAN,
-  PROP_HUNGARIAN_DELETE_THRESHOLD
+  PROP_HUNGARIAN_DELETE_THRESHOLD,
+  PROP_SCALE_FACTOR
 };
 
 // static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
@@ -172,6 +174,13 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
           0, G_MAXUINT,
           DEFAULT_HUNGARIAN_DELETE_THRESHOLD,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_SCALE_FACTOR,
+      g_param_spec_float ("scale-factor", "Scale Factor",
+          "Sets the scale factor the frame which be scaled with before face "
+          "detection",
+          0, G_MAXFLOAT,
+          DEFAULT_SCALE_FACTOR,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
 
   gst_element_class_set_details_simple(gstelement_class,
@@ -205,6 +214,7 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
   filter->shape_predictor = NULL;
+  filter->scale_factor = DEFAULT_SCALE_FACTOR;
 
   filter->faces = new std::map<guint, CheeseFace>;
 
@@ -240,6 +250,9 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     case PROP_HUNGARIAN_DELETE_THRESHOLD:
       filter->hungarian_delete_threshold = g_value_get_uint (value);
       break;
+    case PROP_SCALE_FACTOR:
+      filter->scale_factor = g_value_get_float (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -271,6 +284,8 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
     case PROP_HUNGARIAN_DELETE_THRESHOLD:
       g_value_set_uint (value, filter->hungarian_delete_threshold);
       break;
+    case PROP_SCALE_FACTOR:
+      g_value_set_float (value, filter->scale_factor);
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -321,11 +336,12 @@ static GstFlowReturn
 gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
 {
-  guint i;
+  guint i, j;
   GstMessage *msg;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
   cv::Mat cvImg (cv::cvarrToMat (img));
   cv::Mat resizedImg;
+  cv_image<bgr_pixel> dlib_img;
 
   GValue facelist = G_VALUE_INIT;
   GValue facedata = G_VALUE_INIT;
@@ -334,11 +350,32 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   cout << "width: " << img->width << endl;
 
 
-  //cv::resize(cvImg, resizedImg, cv::Size(200, 200));
+  /* Scale the frame */
+  if (filter->scale_factor != 1.0) {
+    cv::resize(cvImg, resizedImg, cv::Size(img->width * filter->scale_factor,
+        img->height * filter->scale_factor));
+
+    cout << "new height: " << resizedImg.rows << endl;
+    cout << "new width: " << resizedImg.cols << endl;
+
+    dlib_img = cv_image<bgr_pixel> (resizedImg);
+  } else
+    dlib_img = cv_image<bgr_pixel> (cvImg);
 
   auto start = chrono::steady_clock::now();
-  cv_image<bgr_pixel> dlib_img (img);
   std::vector<rectangle> dets = (*filter->face_detector) (dlib_img);
+
+  /* Get the original coordinates */
+  if (filter->scale_factor != 1.0) {
+    for (i = 0; i < dets.size (); i++) {
+      dlib::rectangle new_det (
+          dets[i].left () / filter->scale_factor,
+          dets[i].top () / filter->scale_factor,
+          dets[i].right () / filter->scale_factor,
+          dets[i].bottom () / filter->scale_factor);
+      dets[i] = new_det;
+    }
+  }
 
   msg = gst_cheese_face_detect_message_new (filter, buf);
   g_value_init (&facelist, GST_TYPE_LIST);
@@ -456,6 +493,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     guint id = kv.first;
     CheeseFace face = kv.second;
 
+    /* Draw bounding box of the face */
     if (filter->display_bounding_box &&
         face.last_detected_frame == filter->frame_number) {
       cv::Point tl, br;
@@ -463,19 +501,29 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       br = cv::Point(face.bounding_box.right(), face.bounding_box.bottom());
       cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
     }
+
+    /* Draw ID assigned to the face */
     if (filter->display_id && face.last_detected_frame == filter->frame_number)
       cv::putText (cvImg, std::to_string (id), face.centroid,
           cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (255, 0, 0));
 
     if (filter->shape_predictor) {
-      dlib::full_object_detection shape =
-          (*filter->shape_predictor) (dlib_img, face.bounding_box);
+      dlib::rectangle scaled_det (
+          face.bounding_box.left () * filter->scale_factor,
+          face.bounding_box.top () * filter->scale_factor,
+          face.bounding_box.right () * filter->scale_factor,
+          face.bounding_box.bottom () * filter->scale_factor);
 
-      if (filter->display_landmark) {
-        guint j;
+      dlib::full_object_detection shape =
+          (*filter->shape_predictor) (dlib_img, scaled_det);
+
+      /* Draw the landmark of the face */
+      if (filter->display_landmark &&
+          face.last_detected_frame == filter->frame_number) {
         for (j = 0; j < shape.num_parts (); j++) {
-          cv::Point pt (shape.part (j).x (), shape.part (j).y ());
-          cv::circle(cvImg, pt, 3, cv::Scalar (255, 0, 0), CV_FILLED);
+          cv::Point pt (shape.part (j).x () / filter->scale_factor,
+              shape.part (j).y () / filter->scale_factor);
+          cv::circle(cvImg, pt, 2, cv::Scalar (0, 0, 255), CV_FILLED);
         }
       }
     }

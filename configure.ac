@@ -125,8 +125,8 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([ ], [ ])], [
   AC_MSG_RESULT([no])
 ])
 
-CFLAGS = "-O2"
-CXXFLAGS = "-O2"
+CFLAGS = "-O3"
+CXXFLAGS = "-O3"
 
 dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then

@@ -93,6 +93,7 @@ struct CheeseFace {
   public:
     cv::Point centroid;
     dlib::rectangle bounding_box;
+    dlib::rectangle scaled_bounding_box;
     guint last_detected_frame;
 
     CheeseFace ()
@@ -115,6 +116,7 @@ struct _GstCheeseFaceDetect
   gchar *landmark;
   gboolean use_hungarian;
   guint hungarian_delete_threshold;
+  gfloat scale_factor;
 
   /* private props */
   dlib::frontal_face_detector *face_detector;

@@ -59,10 +59,11 @@ class Player(Gtk.Window):
         self.source.set_property("location", PEOPLE1_PATH)
         self.facedetect.set_property("display-bounding-box", True)
         self.facedetect.set_property("display-id", True)
-        self.facedetect.set_property("display-landmark", False)
-        # self.facedetect.set_property("landmark", SHAPE_MODEL)
+        self.facedetect.set_property("display-landmark", True)
+        self.facedetect.set_property("landmark", SHAPE_MODEL)
         self.facedetect.set_property("use-hungarian", True)
-        self.facedetect.set_property("hungarian-delete-threshold", 10)
+        self.facedetect.set_property("hungarian-delete-threshold", 72)
+        self.facedetect.set_property("scale-factor", 0.8)
 
         # GObject.timeout_add(300, self._duration_querier, self.pipeline)
 
