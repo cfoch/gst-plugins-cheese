@@ -60,6 +60,7 @@ class Player(Gtk.Window):
         self.facedetect.set_property("display-landmark", False)
         self.facedetect.set_property("landmark", SHAPE_MODEL)
         self.facedetect.set_property("use-hungarian", True)
+        self.facedetect.set_property("hungarian-delete-threshold", 10)
 
         # GObject.timeout_add(300, self._duration_querier, self.pipeline)
 

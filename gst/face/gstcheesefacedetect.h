@@ -114,6 +114,7 @@ struct _GstCheeseFaceDetect
   gboolean display_landmark;
   gchar *landmark;
   gboolean use_hungarian;
+  guint hungarian_delete_threshold;
 
   /* private props */
   dlib::frontal_face_detector *face_detector;

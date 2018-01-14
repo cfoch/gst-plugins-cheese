@@ -66,6 +66,8 @@
 #include "gstcheesefacedetect.h"
 
 
+#define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
+
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
 
@@ -84,7 +86,8 @@ enum
   PROP_DISPLAY_ID,
   PROP_DISPLAY_LANDMARK,
   PROP_LANDMARK,
-  PROP_USE_HUNGARIAN
+  PROP_USE_HUNGARIAN,
+  PROP_HUNGARIAN_DELETE_THRESHOLD
 };
 
 // static dlib::frontal_face_detector mydetector = get_frontal_face_detector();
@@ -160,6 +163,15 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
           "Sets whether to use the Hungarian algorithm to matching faces in "
           "the next frames.",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class,
+      PROP_HUNGARIAN_DELETE_THRESHOLD,
+      g_param_spec_uint ("hungarian-delete-threshold",
+          "Hungarian delete threshold",
+          "Sets the number of frames that need to pass to delete a face if it "
+          "has not been detected in that period",
+          0, G_MAXUINT,
+          DEFAULT_HUNGARIAN_DELETE_THRESHOLD,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
 
   gst_element_class_set_details_simple(gstelement_class,
@@ -186,6 +198,7 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->frame_number = 1;
 
   filter->use_hungarian = TRUE;
+  filter->hungarian_delete_threshold = DEFAULT_HUNGARIAN_DELETE_THRESHOLD;
   filter->display_bounding_box = TRUE;
   filter->display_id = TRUE;
   filter->landmark = NULL;
@@ -224,6 +237,9 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     case PROP_USE_HUNGARIAN:
       filter->use_hungarian = g_value_get_boolean (value);
       break;
+    case PROP_HUNGARIAN_DELETE_THRESHOLD:
+      filter->hungarian_delete_threshold = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -251,6 +267,9 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
       break;
     case PROP_USE_HUNGARIAN:
       g_value_set_boolean (value, filter->use_hungarian);
+      break;
+    case PROP_HUNGARIAN_DELETE_THRESHOLD:
+      g_value_set_uint (value, filter->hungarian_delete_threshold);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -342,6 +361,30 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     };
   }
 
+  if (filter->use_hungarian) {
+    std::vector<guint> to_remove;
+    for (auto &kv : *filter->faces) {
+      guint delta_since_detected;
+      guint id = kv.first;
+      CheeseFace face = kv.second;
+
+      delta_since_detected = filter->frame_number - face.last_detected_frame;
+      cout << "delta[" << id << "]=" << delta_since_detected << endl;
+      if (delta_since_detected > filter->hungarian_delete_threshold) {
+        cout << "TO DELETE ID " << id << endl;
+        to_remove.push_back (id);
+      }
+    }
+    for (i = 0; i < to_remove.size (); i++) {
+      /*const guint id = to_remove[i];
+      std::map<guint,CheeseFace>::iterator it;
+      it = mymap.find(id);
+      */
+      cout << "DELETED ID " << to_remove[i] << endl;
+      filter->faces->erase (to_remove[i]);
+    }
+  }
+
   if (!filter->faces->empty() && filter->use_hungarian) {
     guint r, c;
     HungarianAlgorithm HungAlgo;
@@ -393,6 +436,18 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         faces_vals[i]->bounding_box = dets[assignment[i]];
         faces_vals[i]->centroid = calculate_centroid (dets[assignment[i]]);
         faces_vals[i]->last_detected_frame = filter->frame_number;
+      }
+    }
+
+    /* Create new faces */
+    for (i = 0; i < dets.size (); i++) {
+      if (!(std::find (assignment.begin(), assignment.end (), i) !=
+          assignment.end ())) {
+        CheeseFace face_info;
+        face_info.last_detected_frame = filter->frame_number;
+        face_info.bounding_box = dets[i];
+        face_info.centroid = calculate_centroid(dets[i]);
+        (*filter->faces)[++filter->last_face_id] = face_info;
       }
     }
   }
