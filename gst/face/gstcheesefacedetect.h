@@ -109,8 +109,9 @@ struct _GstCheeseFaceDetect
   GstOpencvVideoFilter element;
 
   /* props */
-  gboolean display;
+  gboolean display_bounding_box;
   gboolean display_id;
+  gboolean display_landmark;
   gchar *landmark;
   gboolean use_hungarian;
 

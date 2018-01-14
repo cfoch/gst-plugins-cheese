@@ -80,8 +80,9 @@ enum
 {
   PROP_0,
   PROP_SILENT,
-  PROP_DISPLAY,
+  PROP_DISPLAY_BOUNDING_BOX,
   PROP_DISPLAY_ID,
+  PROP_DISPLAY_LANDMARK,
   PROP_LANDMARK,
   PROP_USE_HUNGARIAN
 };
@@ -137,13 +138,17 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
   gobject_class->set_property = gst_cheese_face_detect_set_property;
   gobject_class->get_property = gst_cheese_face_detect_get_property;
 
-  g_object_class_install_property (gobject_class, PROP_DISPLAY,
-      g_param_spec_boolean ("display", "Display",
+  g_object_class_install_property (gobject_class, PROP_DISPLAY_BOUNDING_BOX,
+      g_param_spec_boolean ("display-bounding-box", "Display",
           "Sets whether the detected faces should be highlighted in the output",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_DISPLAY_ID,
-      g_param_spec_boolean ("display-ids", "Display the ID of each face",
+      g_param_spec_boolean ("display-id", "Display the ID of each face",
           "Sets whether to display the ID of each face",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_DISPLAY_LANDMARK,
+      g_param_spec_boolean ("display-landmark", "Display the landmark",
+          "Sets whether display the landmark for each face",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_LANDMARK,
       g_param_spec_string ("landmark", "Landmark shape model",
@@ -181,7 +186,8 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->frame_number = 1;
 
   filter->use_hungarian = TRUE;
-  filter->display = TRUE;
+  filter->display_bounding_box = TRUE;
+  filter->display_id = TRUE;
   filter->landmark = NULL;
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
@@ -200,11 +206,14 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    case PROP_DISPLAY:
-      filter->display = g_value_get_boolean (value);
+    case PROP_DISPLAY_BOUNDING_BOX:
+      filter->display_bounding_box = g_value_get_boolean (value);
       break;
     case PROP_DISPLAY_ID:
       filter->display_id = g_value_get_boolean (value);
+      break;
+    case PROP_DISPLAY_LANDMARK:
+      filter->display_landmark = g_value_get_boolean (value);
       break;
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
@@ -228,11 +237,14 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (object);
 
   switch (prop_id) {
-    case PROP_DISPLAY:
-      g_value_set_boolean (value, filter->display);
+    case PROP_DISPLAY_BOUNDING_BOX:
+      g_value_set_boolean (value, filter->display_bounding_box);
       break;
     case PROP_DISPLAY_ID:
       g_value_set_boolean (value, filter->display_id);
+      break;
+    case PROP_DISPLAY_LANDMARK:
+      g_value_set_boolean (value, filter->display_landmark);
       break;
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
@@ -312,8 +324,15 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   msg = gst_cheese_face_detect_message_new (filter, buf);
   g_value_init (&facelist, GST_TYPE_LIST);
 
+  if (!filter->use_hungarian) {
+    /* If we are not remapping faces by using the Hungarian Algorithm
+     * so reset all the info as defaults. */
+    filter->last_face_id = 0;
+    filter->faces->clear ();
+  }
+
   /* Init faces */
-  if (filter->faces->empty () && filter->frame_number == 1) {
+  if (filter->faces->empty ()) {
     for (i = 0; i < dets.size(); i++) {
       CheeseFace face_info;
       face_info.last_detected_frame = filter->frame_number;
@@ -323,7 +342,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     };
   }
 
-  if (!filter->faces->empty() && filter->frame_number > 1) {
+  if (!filter->faces->empty() && filter->use_hungarian) {
     guint r, c;
     HungarianAlgorithm HungAlgo;
     std::vector<cv::Point> cur_centroids;
@@ -382,33 +401,34 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     guint id = kv.first;
     CheeseFace face = kv.second;
 
-    if (filter->display) {
+    if (filter->display_bounding_box &&
+        face.last_detected_frame == filter->frame_number) {
       cv::Point tl, br;
       tl = cv::Point(face.bounding_box.left(), face.bounding_box.top());
       br = cv::Point(face.bounding_box.right(), face.bounding_box.bottom());
       cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
-      if (filter->use_hungarian)
-        cv::putText (cvImg, std::to_string (id), face.centroid,
-            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (255, 0, 0));
     }
+    if (filter->display_id && face.last_detected_frame == filter->frame_number)
+      cv::putText (cvImg, std::to_string (id), face.centroid,
+          cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (255, 0, 0));
 
     if (filter->shape_predictor) {
       dlib::full_object_detection shape =
           (*filter->shape_predictor) (dlib_img, face.bounding_box);
 
-      /*if (filter->display) {
+      if (filter->display_landmark) {
         guint j;
         for (j = 0; j < shape.num_parts (); j++) {
           cv::Point pt (shape.part (j).x (), shape.part (j).y ());
           cv::circle(cvImg, pt, 3, cv::Scalar (255, 0, 0), CV_FILLED);
         }
-      }*/
+      }
     }
   }
 
   /* For each face */
-  for (i = 0; i < dets.size(); i++) {
-    GstStructure *s;
+  //for (i = 0; i < dets.size(); i++) {
+    //GstStructure *s;
     /*
     if (filter->faces->empty () && filter->frame_number == 1) {
       CheeseFace face_info;
@@ -454,7 +474,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       }
     }
     */
-  }
+  //}
 
 
   cvImg.release ();
