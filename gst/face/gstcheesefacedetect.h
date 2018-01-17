@@ -121,6 +121,7 @@ struct _GstCheeseFaceDetect
   /* private props */
   dlib::frontal_face_detector *face_detector;
   dlib::shape_predictor *shape_predictor;
+  std::vector<cv::Point3d> *pose_model_points;
 
   guint last_face_id;
   guint frame_number;

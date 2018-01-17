@@ -218,6 +218,15 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 
   filter->faces = new std::map<guint, CheeseFace>;
 
+  filter->pose_model_points = new std::vector<cv::Point3d>;
+
+  filter->pose_model_points->push_back (cv::Point3d (0.0f, 0.0f, 0.0f));               // Nose tip
+  filter->pose_model_points->push_back (cv::Point3d (0.0f, -330.0f, -65.0f));          // Chin
+  filter->pose_model_points->push_back (cv::Point3d (-225.0f, 170.0f, -135.0f));       // Left eye left corner
+  filter->pose_model_points->push_back (cv::Point3d (225.0f, 170.0f, -135.0f));        // Right eye right corner
+  filter->pose_model_points->push_back (cv::Point3d (-150.0f, -150.0f, -125.0f));      // Left Mouth corner
+  filter->pose_model_points->push_back (cv::Point3d (150.0f, -150.0f, -125.0f));       // Right mouth corner
+
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
 }
@@ -489,9 +498,21 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     }
   }
 
+  cv::Point2d center (cvImg.cols / 2, cvImg.rows / 2);
+  double focal_length = cvImg.cols;
+  cv::Mat camera_matrix = (cv::Mat_<double>(3, 3) << focal_length, 0, center.x,
+                                                    0, focal_length, center.y,
+                                                    0, 0, 1);
+  cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<double>::type);
+
   for (auto &kv : *filter->faces) {
     guint id = kv.first;
     CheeseFace face = kv.second;
+
+    cv::Mat rotation_vector;
+    cv::Mat translation_vector;
+    std::vector<cv::Point2d> image_points;
+    guint pose_pts[6] = {30, 8, 36, 45, 48, 54};
 
     /* Draw bounding box of the face */
     if (filter->display_bounding_box &&
@@ -520,6 +541,40 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       /* Draw the landmark of the face */
       if (filter->display_landmark &&
           face.last_detected_frame == filter->frame_number) {
+
+        /* Pose estimation */
+        cout << "Calculate Pose estimation" << endl;
+        for (i = 0; i < 6; i++) {
+          const guint index = pose_pts[i];
+          cv::Point2d pt (shape.part (index).x () / filter->scale_factor,
+                          shape.part (index).y () / filter->scale_factor);
+          image_points.push_back(pt);
+        }
+        cv::solvePnP (*filter->pose_model_points, image_points, camera_matrix,
+            dist_coeffs, rotation_vector, translation_vector);
+
+        std::vector<cv::Point3d> nose_end_point3D;
+        std::vector<cv::Point2d> nose_end_point2D;
+        nose_end_point3D.push_back(cv::Point3d (0, 0, 1000.0));
+        nose_end_point3D.push_back(cv::Point3d (0, 1000.0, 0));
+        nose_end_point3D.push_back(cv::Point3d (-1000.0, 0, 0));
+
+        projectPoints(nose_end_point3D, rotation_vector, translation_vector,
+            camera_matrix, dist_coeffs, nose_end_point2D);
+
+        cv::line(cvImg, image_points[0], nose_end_point2D[0],
+            cv::Scalar(255, 0, 0), 2);
+        cv::line(cvImg, image_points[0], nose_end_point2D[1],
+            cv::Scalar(0, 255, 0), 2);
+        cv::line(cvImg, image_points[0], nose_end_point2D[2],
+            cv::Scalar(0, 0, 255), 2);
+
+        cout << "n points" << nose_end_point2D.size () << endl;
+
+        cout << "Rotation Vector " << endl << rotation_vector << endl;
+        cout << "Translation Vector" << endl << translation_vector << endl;
+        cout <<  nose_end_point2D << endl;
+        /* end */
         for (j = 0; j < shape.num_parts (); j++) {
           cv::Point pt (shape.part (j).x () / filter->scale_factor,
               shape.part (j).y () / filter->scale_factor);
