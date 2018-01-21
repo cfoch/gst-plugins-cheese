@@ -1,1 +1,1 @@
-SUBDIRS = detector
+SUBDIRS = detector gl-version glcube

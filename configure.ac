@@ -114,6 +114,54 @@ PKG_CHECK_MODULES(DLIB, [
   ])
 ])
 
+PKG_CHECK_MODULES(FREEGLUT, [
+  freeglut >= 3.0.0
+], [
+  AC_PROG_CXX
+  AC_LANG([C++])
+], [
+  AC_MSG_ERROR([
+    freeglut not found.
+  ])
+])
+
+
+PKG_CHECK_MODULES(GLEW, [
+  glew >= 2.0.0
+], [
+  AC_PROG_CXX
+  AC_LANG([C++])
+], [
+  AC_MSG_ERROR([
+    glew not found.
+  ])
+])
+
+PKG_CHECK_MODULES(GLU, [
+  glu >= 9.0.0
+], [
+  AC_PROG_CXX
+  AC_LANG([C++])
+], [
+  AC_MSG_ERROR([
+    glu not found.
+  ])
+])
+
+
+PKG_CHECK_MODULES(OPENGL, [
+  gl >= 17.0.0
+], [
+  AC_PROG_CXX
+  AC_LANG([C++])
+], [
+  AC_MSG_ERROR([
+    opengl not found.
+  ])
+])
+
+
+
 dnl check if compiler understands -Wall (if yes, add -Wall to GST_CFLAGS)
 AC_MSG_CHECKING([to see if compiler understands -Wall])
 save_CFLAGS="$CFLAGS"
@@ -127,6 +175,8 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([ ], [ ])], [
 
 CFLAGS = "-O3"
 CXXFLAGS = "-O3"
+
+OPENGL_LIBS=" -lGL -lglut -lGLEW"
 
 dnl set the plugindir where plugins should be installed (for src/Makefile.am)
 if test "x${prefix}" = "x$HOME"; then
@@ -147,6 +197,7 @@ gst/Makefile
 gst/face/Makefile
 examples/Makefile
 examples/detector/Makefile
+examples/gl-version/Makefile
 ])
 AC_OUTPUT
 
