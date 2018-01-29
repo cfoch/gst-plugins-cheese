@@ -39,6 +39,10 @@ gstbase_dep = dependency('gstreamer-base-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_base_dep'])
 gstvideo_dep = dependency('gstreamer-video-1.0', version : gst_req,
     fallback : ['gst-plugins-base', 'video_dep'])
+gst_controller_dep = dependency('gstreamer-controller-1.0', version : gst_req,
+  fallback : ['gstreamer', 'gst_controller_dep'])
+gstgl_dep = dependency('gstreamer-gl-1.0', version : gst_req,
+    fallback : ['gst-plugins-base', 'gstgl_dep'], required: false)
 
 
 gobject_dep = dependency('gobject-2.0')
