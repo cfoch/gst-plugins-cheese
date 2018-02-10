@@ -1,6 +1,7 @@
 message('In Cheese face directory')
 face_sources = [
   'gstcheesefacedetect.cpp',
+  'gstcheesefaceoverlay.c',
   'gstcheesefaceeffects.cpp',
   'Hungarian.cpp'
 ]
