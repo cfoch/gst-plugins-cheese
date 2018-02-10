@@ -45,6 +45,8 @@
 #define __GST_CHEESEFACEDETECT_H__
 
 #include <gst/gst.h>
+#include <graphene.h>
+#include <graphene-gobject.h>
 #include <gst/opencv/gstopencvvideofilter.h>
 
 #include "opencv2/opencv.hpp"

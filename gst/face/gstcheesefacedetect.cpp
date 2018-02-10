@@ -346,18 +346,23 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
 {
   guint i, j;
+  GValue faces_values = G_VALUE_INIT;
   GstMessage *msg;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
+  /* TODO */
+  /* Handle more cases for posting messages like gstfacedetect. */
+  gboolean post_msg = TRUE;
   cv::Mat cvImg (cv::cvarrToMat (img));
   cv::Mat resizedImg;
   cv_image<bgr_pixel> dlib_img;
 
-  GValue facelist = G_VALUE_INIT;
-  GValue facedata = G_VALUE_INIT;
-
   cout << "height: " << img->height << endl;
   cout << "width: " << img->width << endl;
 
+  if (post_msg) {
+    msg = gst_cheese_face_detect_message_new (filter, buf);
+    g_value_init (&faces_values, GST_TYPE_LIST);
+  }
 
   /* Scale the frame */
   if (filter->scale_factor != 1.0) {
@@ -385,9 +390,6 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       dets[i] = new_det;
     }
   }
-
-  msg = gst_cheese_face_detect_message_new (filter, buf);
-  g_value_init (&facelist, GST_TYPE_LIST);
 
   if (!filter->use_hungarian) {
     /* If we are not remapping faces by using the Hungarian Algorithm
@@ -506,6 +508,8 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<double>::type);
 
   for (auto &kv : *filter->faces) {
+    GValue facedata_value = G_VALUE_INIT;
+    GstStructure *facedata_st;
     guint id = kv.first;
     CheeseFace face = kv.second;
 
@@ -514,6 +518,32 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     std::vector<cv::Point2d> image_points;
     guint pose_pts[6] = {30, 8, 36, 45, 48, 54};
 
+    if (post_msg) {
+      facedata_st = gst_structure_new ("face", NULL);
+      g_value_init (&facedata_value, GST_TYPE_STRUCTURE);
+    }
+
+    /* Post the bounding box info of the face */
+    if (post_msg && face.last_detected_frame == filter->frame_number) {
+      GValue tl_value = G_VALUE_INIT;
+      GValue br_value = G_VALUE_INIT;
+      graphene_point_t tl_graphene_point;
+      graphene_point_t br_graphene_point;
+
+      g_value_init (&tl_value, GRAPHENE_TYPE_POINT);
+      g_value_init (&br_value, GRAPHENE_TYPE_POINT);
+
+      tl_graphene_point = GRAPHENE_POINT_INIT ((float) face.bounding_box.left(),
+          (float) face.bounding_box.top());
+      br_graphene_point = GRAPHENE_POINT_INIT (
+          (float) face.bounding_box.right(),
+          (float) face.bounding_box.bottom());
+      g_value_set_boxed (&tl_value, &tl_graphene_point);
+      g_value_set_boxed (&br_value, &br_graphene_point);
+
+      gst_structure_set_value (facedata_st, "bounding-box-tl", &tl_value);
+      gst_structure_set_value (facedata_st, "bounding-box-br", &br_value);
+    }
     /* Draw bounding box of the face */
     if (filter->display_bounding_box &&
         face.last_detected_frame == filter->frame_number) {
@@ -523,6 +553,13 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
     }
 
+    /* Post the ID assigned to the face */
+    if (post_msg && face.last_detected_frame == filter->frame_number) {
+      GValue id_value = G_VALUE_INIT;
+      g_value_init (&id_value, G_TYPE_UINT);
+      g_value_set_uint (&id_value, id);
+      gst_structure_set_value (facedata_st, "id", &id_value);
+    }
     /* Draw ID assigned to the face */
     if (filter->display_id && face.last_detected_frame == filter->frame_number)
       cv::putText (cvImg, std::to_string (id), face.centroid,
@@ -538,9 +575,13 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       dlib::full_object_detection shape =
           (*filter->shape_predictor) (dlib_img, scaled_det);
 
-      /* Draw the landmark of the face */
-      if (filter->display_landmark &&
+      /* Draw the landmark of the face or/and post it as a message */
+      if ((filter->display_landmark || post_msg) &&
           face.last_detected_frame == filter->frame_number) {
+        GValue landmark_values = G_VALUE_INIT;
+
+        if (post_msg)
+          g_value_init (&landmark_values, GST_TYPE_ARRAY);
 
         /* Pose estimation */
         cout << "Calculate Pose estimation" << endl;
@@ -576,71 +617,40 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         cout <<  nose_end_point2D << endl;
         /* end */
         for (j = 0; j < shape.num_parts (); j++) {
-          cv::Point pt (shape.part (j).x () / filter->scale_factor,
-              shape.part (j).y () / filter->scale_factor);
-          cv::circle(cvImg, pt, 2, cv::Scalar (0, 0, 255), CV_FILLED);
+          if (filter->display_landmark) {
+            cv::Point pt (shape.part (j).x () / filter->scale_factor,
+                shape.part (j).y () / filter->scale_factor);
+            cv::circle(cvImg, pt, 2, cv::Scalar (0, 0, 255), CV_FILLED);
+          }
+          if (post_msg) {
+            GValue point_value;
+            graphene_point_t graphene_point =
+                GRAPHENE_POINT_INIT (shape.part (j).x () / filter->scale_factor,
+                    shape.part (j).y () / filter->scale_factor);
+            g_value_init (&point_value, GRAPHENE_TYPE_POINT);
+            g_value_set_boxed (&point_value, &graphene_point);
+            gst_value_array_append_value (&landmark_values, &point_value);
+          }
         }
+
+        if (post_msg)
+          gst_structure_set_value (facedata_st, "landmark", &landmark_values);
       }
+    }
+    if (post_msg) {
+      g_value_take_boxed (&facedata_value, facedata_st);
+      gst_value_list_append_value (&faces_values, &facedata_value);
     }
   }
-
-  /* For each face */
-  //for (i = 0; i < dets.size(); i++) {
-    //GstStructure *s;
-    /*
-    if (filter->faces->empty () && filter->frame_number == 1) {
-      CheeseFace face_info;
-      face_info.centroid = calculate_centroid(dets[i]);
-      face_info.last_detected_frame = filter->frame_number;
-      face_info.bounding_box = dets[i];
-      (*filter->faces)[filter->last_face_id] = face_info;
-    };
-    */
-
-    /*
-    s = gst_structure_new ("face",
-        "l", G_TYPE_UINT, dets[i].left (),
-        "t", G_TYPE_UINT, dets[i].top (),
-        "r", G_TYPE_UINT, dets[i].right (),
-        "b", G_TYPE_UINT, dets[i].bottom (), NULL);
-
-    g_value_init (&facedata, GST_TYPE_STRUCTURE);
-    g_value_take_boxed (&facedata, s);
-    gst_value_list_append_value (&facelist, &facedata);
-    g_value_unset (&facedata);
-    */
-
-    /*
-    cout << "face number " << i + 1 << ": " << dets[i] << endl;
-    if (filter->display) {
-      cv::Point tl, br;
-      tl = cv::Point(dets[i].left(), dets[i].top());
-      br = cv::Point(dets[i].right(), dets[i].bottom());
-      cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
-    }
-
-    if (filter->shape_predictor) {
-      dlib::full_object_detection shape =
-          (*filter->shape_predictor) (dlib_img, dets[i]);
-
-      if (filter->display) {
-        guint j;
-        for (j = 0; j < shape.num_parts (); j++) {
-          cv::Point pt (shape.part (j).x (), shape.part (j).y ());
-          cv::circle(cvImg, pt, 3, cv::Scalar (255, 0, 0), CV_FILLED);
-        }
-      }
-    }
-    */
-  //}
-
-
   cvImg.release ();
-  /*
-  gst_structure_set_value ((GstStructure *) gst_message_get_structure (msg),
-      "faces", &facelist);
-  */
   auto end = chrono::steady_clock::now();
+
+  if (post_msg) {
+    gst_structure_set_value ((GstStructure *) gst_message_get_structure (msg),
+        "faces", &faces_values);
+    g_value_unset (&faces_values);
+    gst_element_post_message (GST_ELEMENT (filter), msg);
+  }
 
   cout << "Elapsed time in miliseconds: " <<
       chrono::duration_cast<chrono::milliseconds>(end - start).count() <<
