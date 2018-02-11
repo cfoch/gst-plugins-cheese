@@ -549,24 +549,16 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
 
     /* Post the bounding box info of the face */
     if (post_msg && face.last_detected_frame == filter->frame_number) {
-      GValue tl_value = G_VALUE_INIT;
-      GValue br_value = G_VALUE_INIT;
-      graphene_point_t tl_graphene_point;
-      graphene_point_t br_graphene_point;
+      GValue box_value = G_VALUE_INIT;
+      graphene_rect_t graphene_bounding_box;
 
-      g_value_init (&tl_value, GRAPHENE_TYPE_POINT);
-      g_value_init (&br_value, GRAPHENE_TYPE_POINT);
+      g_value_init (&box_value, GRAPHENE_TYPE_RECT);
 
-      tl_graphene_point = GRAPHENE_POINT_INIT ((float) face.bounding_box.left(),
-          (float) face.bounding_box.top());
-      br_graphene_point = GRAPHENE_POINT_INIT (
-          (float) face.bounding_box.right(),
-          (float) face.bounding_box.bottom());
-      g_value_set_boxed (&tl_value, &tl_graphene_point);
-      g_value_set_boxed (&br_value, &br_graphene_point);
-
-      gst_structure_set_value (facedata_st, "bounding-box-tl", &tl_value);
-      gst_structure_set_value (facedata_st, "bounding-box-br", &br_value);
+      graphene_bounding_box = GRAPHENE_RECT_INIT (face.bounding_box.left (),
+          face.bounding_box.top (), face.bounding_box.width (),
+          face.bounding_box.height ());
+      g_value_set_boxed (&box_value, &graphene_bounding_box);
+      gst_structure_set_value (facedata_st, "bounding-box", &box_value);
     }
     /* Draw bounding box of the face */
     if (filter->display_bounding_box &&

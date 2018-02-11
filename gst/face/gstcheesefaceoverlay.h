@@ -44,6 +44,11 @@
 #define __GST_CHEESEFACEOVERLAY_H__
 
 #include <gst/gst.h>
+#include <cairo.h>
+#include <graphene.h>
+#include <graphene-gobject.h>
+#include <gdk/gdk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 G_BEGIN_DECLS
 
@@ -67,13 +72,11 @@ struct _GstCheeseFaceOverlay
 
   GstPad *sinkpad, *srcpad;
 
-  GstElement *face_detect;
-  GstElement *colorspace;
-  GstElement *svg_overlay;
+  GstElement *overlay;
+  gboolean draw;
 
-  gboolean process_message;
-
-  gboolean update_svg;
+  GPtrArray *locations;
+  GstStructure *st;
 
   gchar *location;
   gfloat x;

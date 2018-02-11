@@ -50,7 +50,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-1.0 autovideosrc ! videoconvert ! faceoverlay location=/path/to/gnome-video-effects/pixmaps/bow.svg x=0.5 y=0.5 w=0.7 h=0.7 ! videoconvert ! autovideosink
+ * gst-launch-1.0 autovideosrc ! videoconvert ! faceoverlay location=/path/image1.svg,/path/image2.svg x=0.5 y=0.5 w=0.7 h=0.7 ! videoconvert ! autovideosink
  * ]|
  * </refsect2>
  */
@@ -97,30 +97,40 @@ static void gst_cheese_face_overlay_get_property (GObject * object, guint prop_i
     GValue * value, GParamSpec * pspec);
 static void gst_cheese_face_overlay_message_handler (GstBin * bin,
     GstMessage * message);
+static void gst_cheese_face_overlay_draw_overlay (GstElement * overlay,
+    cairo_t * cr, guint64 timestamp, guint64 duration, gpointer user_data);
 static GstStateChangeReturn gst_cheese_face_overlay_change_state (GstElement * element,
     GstStateChange transition);
 static gboolean gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter);
+static void gst_cheese_face_overlay_reset_locations (GstCheeseFaceOverlay * filter);
+static void gst_cheese_face_overlay_dispose (GObject * object);
+static void gst_cheese_face_overlay_set_location (GstCheeseFaceOverlay * filter,
+    const char *str);
 
 static gboolean
 gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter)
 {
-  GstElement *csp, *face_detect, *overlay;
+  GstElement *converter, *face_detect, *overlay;
   GstPad *pad;
 
-  csp = gst_element_factory_make ("videoconvert", NULL);
-  face_detect = gst_element_factory_make ("facedetect", NULL);
-  overlay = gst_element_factory_make ("rsvgoverlay", NULL);
+  converter = gst_element_factory_make ("videoconvert", NULL);
+  face_detect = gst_element_factory_make ("cheesefacedetect", NULL);
+  overlay = gst_element_factory_make ("cairooverlay", NULL);
+
+  g_signal_connect (overlay, "draw",
+      G_CALLBACK (gst_cheese_face_overlay_draw_overlay), filter);
 
   /* FIXME: post missing-plugin messages on NULL->READY if needed */
-  if (csp == NULL || face_detect == NULL || overlay == NULL)
-    goto missing_element;
+  if (converter == NULL || face_detect == NULL || overlay == NULL)
+    goto element_not_found;
 
-  g_object_set (face_detect, "display", FALSE, NULL);
+  /* g_object_set (face_detect, "display", FALSE, NULL); */
+  g_object_set (face_detect, "scale-factor", 0.5, NULL);
 
-  gst_bin_add_many (GST_BIN (filter), face_detect, csp, overlay, NULL);
-  filter->svg_overlay = overlay;
+  gst_bin_add_many (GST_BIN (filter), face_detect, converter, overlay, NULL);
+  filter->overlay = overlay;
 
-  if (!gst_element_link_many (face_detect, csp, overlay, NULL))
+  if (!gst_element_link_many (face_detect, converter, overlay, NULL))
     GST_ERROR_OBJECT (filter, "couldn't link elements");
 
   pad = gst_element_get_static_pad (face_detect, "sink");
@@ -135,22 +145,21 @@ gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter)
 
   return TRUE;
 
-/* ERRORS */
-missing_element:
+element_not_found:
   {
     /* clean up */
-    if (csp == NULL)
+    if (converter == NULL)
       GST_ERROR_OBJECT (filter, "videoconvert element not found");
     else
-      gst_object_unref (csp);
+      gst_object_unref (converter);
 
     if (face_detect == NULL)
-      GST_ERROR_OBJECT (filter, "facedetect element not found (opencv plugin)");
+      GST_ERROR_OBJECT (filter, "cheesefacedetect element not found");
     else
       gst_object_unref (face_detect);
 
     if (overlay == NULL)
-      GST_ERROR_OBJECT (filter, "rsvgoverlay element not found (rsvg plugin)");
+      GST_ERROR_OBJECT (filter, "cairooverlay element not found");
     else
       gst_object_unref (overlay);
 
@@ -166,13 +175,12 @@ gst_cheese_face_overlay_change_state (GstElement * element, GstStateChange trans
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
-      if (filter->svg_overlay == NULL) {
+      if (filter->overlay == NULL) {
         GST_ELEMENT_ERROR (filter, CORE, MISSING_PLUGIN, (NULL),
-            ("Some required plugins are missing, probably either the opencv "
-                "facedetect element or rsvgoverlay"));
+            ("Some required plugins are missing, probably either "
+                "cheesefacedetect element or cairooverlay"));
         return GST_STATE_CHANGE_FAILURE;
       }
-      filter->update_svg = TRUE;
       break;
     default:
       break;
@@ -189,87 +197,85 @@ gst_cheese_face_overlay_change_state (GstElement * element, GstStateChange trans
 }
 
 static void
-gst_cheese_face_overlay_handle_faces (GstCheeseFaceOverlay * filter, const GstStructure * s)
+gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
+    guint64 timestamp, guint64 duration, gpointer user_data)
 {
-  guint x, y, width, height;
-  gint svg_x, svg_y, svg_width, svg_height;
+  GstCheeseFaceOverlay *filter;
   const GstStructure *face;
   const GValue *faces_list, *face_val;
-  gchar *new_location = NULL;
-  gint face_count;
-
-#if 0
-  /* optionally draw the image once every two messages for better performance */
-  filter->process_message = !filter->process_message;
-  if (!filter->process_message)
+  gint face_count, i;
+  filter = GST_CHEESEFACEOVERLAY (user_data);
+  g_print ("DRAW CALLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  if (!filter->draw) {
+    GST_LOG_OBJECT (filter, "Not drawing.");
     return;
-#endif
+  }
 
-  faces_list = gst_structure_get_value (s, "faces");
+  GST_LOG ("structure is %" GST_PTR_FORMAT, filter->st);
+  faces_list = gst_structure_get_value (filter->st, "faces");
+  if (!faces_list)
+    return;
   face_count = gst_value_list_get_size (faces_list);
   GST_LOG_OBJECT (filter, "face count: %d", face_count);
+  g_print ("face count: %d\n", face_count);
 
-  if (face_count == 0) {
-    GST_DEBUG_OBJECT (filter, "no face, clearing overlay");
-    g_object_set (filter->svg_overlay, "location", NULL, NULL);
-    GST_OBJECT_LOCK (filter);
-    filter->update_svg = TRUE;
-    GST_OBJECT_UNLOCK (filter);
+  filter->draw = filter->draw || face_count > 0 || filter->location == 0;
+ 
+  if (!filter->draw) {
+    GST_DEBUG_OBJECT (filter, "No face detected. Clearing.");
     return;
   }
+  for (i = 0; i < face_count; i++) {
+    const GValue *bounding_box_value;
+    graphene_rect_t *bounding_box_ptr;
+    guint x, y, width, height, img_width, img_height;
+    gfloat img_scale_factor;
+    GdkPixbuf *pixbuf;
 
-  /* The last face in the list seems to be the right one, objects mistakenly
-   * detected as faces for a couple of frames seem to be in the list
-   * beginning. TODO: needs confirmation. */
-  face_val = gst_value_list_get_value (faces_list, face_count - 1);
-  face = gst_value_get_structure (face_val);
-  gst_structure_get_uint (face, "x", &x);
-  gst_structure_get_uint (face, "y", &y);
-  gst_structure_get_uint (face, "width", &width);
-  gst_structure_get_uint (face, "height", &height);
+    face_val = gst_value_list_get_value (faces_list, i);
+    face = gst_value_get_structure (face_val);
+    bounding_box_value = gst_structure_get_value (face, "bounding-box");
+    bounding_box_ptr =
+      (graphene_rect_t *) g_value_get_boxed (bounding_box_value);
 
-  /* Apply x and y offsets relative to face position and size.
-   * Set image width and height as a fraction of face width and height.
-   * Cast to int since face position and size will never be bigger than
-   * G_MAX_INT and we may have negative values as svg_x or svg_y */
+    x = graphene_rect_get_x (bounding_box_ptr);
+    y = graphene_rect_get_y (bounding_box_ptr);
+    width = graphene_rect_get_width (bounding_box_ptr);
+    height = graphene_rect_get_height (bounding_box_ptr);
 
-  GST_OBJECT_LOCK (filter);
+    pixbuf = g_ptr_array_index (filter->locations, i % filter->locations->len);
+    GST_LOG_OBJECT (filter, "Drawing image \"%d\" at (%d, %d)", i, x, y);
 
-  svg_x = (gint) x + (gint) (filter->x * width);
-  svg_y = (gint) y + (gint) (filter->y * height);
+    /*
+    x += filter->x * width;
+    y += filter->y * height;
+    width *= filter->w;
+    height *= filter->h;
+    */
+    img_scale_factor = height / (gfloat) gdk_pixbuf_get_height (pixbuf);
+    img_width = gdk_pixbuf_get_width (pixbuf) * img_scale_factor;
+    img_height = height;
 
-  svg_width = (gint) (filter->w * width);
-  svg_height = (gint) (filter->h * height);
-
-  if (filter->update_svg) {
-    new_location = g_strdup (filter->location);
-    filter->update_svg = FALSE;
+    g_print ("scale factor: %lf\n", width * img_scale_factor);
+    pixbuf = gdk_pixbuf_scale_simple (pixbuf, img_width, img_height,
+        GDK_INTERP_NEAREST);
+    gdk_cairo_set_source_pixbuf (cr, pixbuf, x - img_width / 2 + width / 2, y);
+    cairo_paint (cr);
+    g_object_unref (pixbuf);
   }
-  GST_OBJECT_UNLOCK (filter);
-
-  if (new_location != NULL) {
-    GST_DEBUG_OBJECT (filter, "set rsvgoverlay location=%s", new_location);
-    g_object_set (filter->svg_overlay, "location", new_location, NULL);
-    g_free (new_location);
-  }
-
-  GST_LOG_OBJECT (filter, "overlay dimensions: %d x %d @ %d,%d",
-      svg_width, svg_height, svg_x, svg_y);
-
-  g_object_set (filter->svg_overlay,
-      "x", svg_x, "y", svg_y, "width", svg_width, "height", svg_height, NULL);
 }
 
 static void
 gst_cheese_face_overlay_message_handler (GstBin * bin, GstMessage * message)
 {
+  GstCheeseFaceOverlay *filter = GST_CHEESEFACEOVERLAY (bin);
   if (GST_MESSAGE_TYPE (message) == GST_MESSAGE_ELEMENT) {
-    const GstStructure *s = gst_message_get_structure (message);
-
-    if (gst_structure_has_name (s, "facedetect")) {
-      gst_cheese_face_overlay_handle_faces (GST_CHEESEFACEOVERLAY (bin), s);
-    }
-  }
+    if (filter->st)
+      gst_structure_free (filter->st);
+    filter->st = gst_structure_copy (gst_message_get_structure (message));
+    filter->draw = gst_structure_has_name (filter->st, "cheesefacedetect");
+  } else
+    filter->draw = FALSE;
 
   GST_BIN_CLASS (parent_class)->handle_message (bin, message);
 }
@@ -287,6 +293,7 @@ gst_cheese_face_overlay_class_init (GstCheeseFaceOverlayClass * klass)
 
   gobject_class->set_property = gst_cheese_face_overlay_set_property;
   gobject_class->get_property = gst_cheese_face_overlay_get_property;
+  gobject_class->dispose = gst_cheese_face_overlay_dispose;
 
   g_object_class_install_property (gobject_class, PROP_LOCATION,
       g_param_spec_string ("location", "Location",
@@ -313,7 +320,7 @@ gst_cheese_face_overlay_class_init (GstCheeseFaceOverlayClass * klass)
       "cheesefaceoverlay",
       "Filter/Editor/Video",
       "Overlays SVG graphics over a detected face in a video stream",
-      "Laura Lucas Alday <lauralucas@gmail.com>");
+      "Fabian Orccon <cfoch.fabian@gmail.com>");
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&src_factory));
@@ -335,9 +342,11 @@ gst_cheese_face_overlay_init (GstCheeseFaceOverlay * filter)
   filter->y = 0;
   filter->w = 1;
   filter->h = 1;
-  filter->svg_overlay = NULL;
+  filter->overlay = NULL;
   filter->location = NULL;
-  filter->process_message = TRUE;
+  filter->draw = FALSE;
+  filter->locations = g_ptr_array_new ();
+  filter->location = NULL;
 
   tmpl = gst_static_pad_template_get (&sink_factory);
   filter->sinkpad = gst_ghost_pad_new_no_target_from_template ("sink", tmpl);
@@ -363,7 +372,7 @@ gst_cheese_face_overlay_set_property (GObject * object, guint prop_id,
       GST_OBJECT_LOCK (filter);
       g_free (filter->location);
       filter->location = g_value_dup_string (value);
-      filter->update_svg = TRUE;
+      gst_cheese_face_overlay_set_location (filter, g_value_dup_string (value));
       GST_OBJECT_UNLOCK (filter);
       break;
     case PROP_X:
@@ -428,4 +437,53 @@ gst_cheese_face_overlay_get_property (GObject * object, guint prop_id,
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+}
+
+static void
+gst_cheese_face_overlay_dispose (GObject * object)
+{
+  GstCheeseFaceOverlay *filter = GST_CHEESEFACEOVERLAY (object);
+
+  g_free (filter->location);
+
+  gst_cheese_face_overlay_reset_locations (filter);
+  g_ptr_array_free (filter->locations, TRUE);
+
+  if (filter->st)
+    gst_structure_free (filter->st);
+
+  G_OBJECT_CLASS (parent_class)->dispose (object);
+}
+
+
+static void
+gst_cheese_face_overlay_reset_locations (GstCheeseFaceOverlay * filter)
+{
+  gint i;
+  for (i = 0; i < filter->locations->len; i++)
+    g_object_unref (g_ptr_array_index (filter->locations, i));
+  g_ptr_array_remove_range (filter->locations, 0, filter->locations->len);
+}
+
+static void
+gst_cheese_face_overlay_set_location (GstCheeseFaceOverlay * filter,
+    const char *str)
+{
+  gint i;
+  gchar **locations;
+
+  gst_cheese_face_overlay_reset_locations (filter);
+  locations = g_strsplit (str, ",", -1);
+  for (i = 0; locations && locations[i]; i++) {
+   GdkPixbuf *pixbuf;
+    GError *pixbuf_err = NULL;
+    pixbuf = gdk_pixbuf_new_from_file (locations[i], &pixbuf_err);
+    if (pixbuf_err) {
+      GST_DEBUG_OBJECT (filter, "Error: %s", pixbuf_err->message);
+      continue;
+    } else
+      GST_LOG ("File \"%s\" added", locations[i]);
+    g_ptr_array_add (filter->locations, (gpointer) pixbuf);
+  }
+  g_strfreev (locations);
 }
