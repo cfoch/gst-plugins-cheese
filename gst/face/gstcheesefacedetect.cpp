@@ -638,7 +638,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
                 cv::Scalar(0, 0, 255), 2);
           }
 
-          if (false) {
+          if (post_msg) {
             graphene_point3d_t rotation_graphene_vector;
             GValue rotation_value = G_VALUE_INIT;
 
