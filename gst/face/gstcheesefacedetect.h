@@ -115,8 +115,10 @@ struct _GstCheeseFaceDetect
   gboolean display_bounding_box;
   gboolean display_id;
   gboolean display_landmark;
+  gboolean display_pose_estimation;
   gchar *landmark;
   gboolean use_hungarian;
+  gboolean use_pose_estimation;
   guint hungarian_delete_threshold;
   gfloat scale_factor;
 

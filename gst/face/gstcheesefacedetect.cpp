@@ -86,9 +86,11 @@ enum
   PROP_DISPLAY_BOUNDING_BOX,
   PROP_DISPLAY_ID,
   PROP_DISPLAY_LANDMARK,
+  PROP_DISPLAY_POSE_ESTIMATION,
   PROP_LANDMARK,
   PROP_USE_HUNGARIAN,
   PROP_HUNGARIAN_DELETE_THRESHOLD,
+  PROP_USE_POSE_ESTIMATION,
   PROP_SCALE_FACTOR
 };
 
@@ -155,6 +157,10 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
       g_param_spec_boolean ("display-landmark", "Display the landmark",
           "Sets whether display the landmark for each face",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_DISPLAY_POSE_ESTIMATION,
+      g_param_spec_boolean ("display-pose-estimation", "Display the landmark",
+          "Sets whether display the axis of the pose estimation for each face",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_LANDMARK,
       g_param_spec_string ("landmark", "Landmark shape model",
           "Location of the shape model. You can get one from "
@@ -174,6 +180,10 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
           0, G_MAXUINT,
           DEFAULT_HUNGARIAN_DELETE_THRESHOLD,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_USE_POSE_ESTIMATION,
+      g_param_spec_boolean ("use-pose-estimation", "Pose estimation",
+          "Sets whether to use estimate the pose of each face.",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_SCALE_FACTOR,
       g_param_spec_float ("scale-factor", "Scale Factor",
           "Sets the scale factor the frame which be scaled with before face "
@@ -207,9 +217,11 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->frame_number = 1;
 
   filter->use_hungarian = TRUE;
+  filter->use_pose_estimation = TRUE;
   filter->hungarian_delete_threshold = DEFAULT_HUNGARIAN_DELETE_THRESHOLD;
   filter->display_bounding_box = TRUE;
   filter->display_id = TRUE;
+  filter->display_pose_estimation = TRUE;
   filter->landmark = NULL;
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
@@ -247,6 +259,9 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     case PROP_DISPLAY_LANDMARK:
       filter->display_landmark = g_value_get_boolean (value);
       break;
+    case PROP_DISPLAY_POSE_ESTIMATION:
+      filter->display_pose_estimation = g_value_get_boolean (value);
+      break;
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
       filter->shape_predictor = new dlib::shape_predictor;
@@ -258,6 +273,9 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
       break;
     case PROP_HUNGARIAN_DELETE_THRESHOLD:
       filter->hungarian_delete_threshold = g_value_get_uint (value);
+      break;
+    case PROP_USE_POSE_ESTIMATION:
+      filter->use_pose_estimation = g_value_get_boolean (value);
       break;
     case PROP_SCALE_FACTOR:
       filter->scale_factor = g_value_get_float (value);
@@ -287,11 +305,17 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
       break;
+    case PROP_DISPLAY_POSE_ESTIMATION:
+      g_value_set_boolean (value, filter->display_pose_estimation);
+      break;
     case PROP_USE_HUNGARIAN:
       g_value_set_boolean (value, filter->use_hungarian);
       break;
     case PROP_HUNGARIAN_DELETE_THRESHOLD:
       g_value_set_uint (value, filter->hungarian_delete_threshold);
+      break;
+    case PROP_USE_POSE_ESTIMATION:
+      g_value_set_boolean (value, filter->use_pose_estimation);
       break;
     case PROP_SCALE_FACTOR:
       g_value_set_float (value, filter->scale_factor);
@@ -314,7 +338,7 @@ gst_cheese_face_detect_message_new (GstCheeseFaceDetect * filter,
   stream_time = gst_segment_to_stream_time (&trans->segment, GST_FORMAT_TIME,
       GST_BUFFER_TIMESTAMP (buf));
 
-  s = gst_structure_new ("facedetect",
+  s = gst_structure_new ("cheesefacedetect",
       "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buf),
       "stream-time", G_TYPE_UINT64, stream_time,
       "running-time", G_TYPE_UINT64, running_time,
@@ -518,7 +542,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     std::vector<cv::Point2d> image_points;
     guint pose_pts[6] = {30, 8, 36, 45, 48, 54};
 
-    if (post_msg) {
+    if (post_msg && face.last_detected_frame == filter->frame_number) {
       facedata_st = gst_structure_new ("face", NULL);
       g_value_init (&facedata_value, GST_TYPE_STRUCTURE);
     }
@@ -584,37 +608,58 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           g_value_init (&landmark_values, GST_TYPE_ARRAY);
 
         /* Pose estimation */
-        cout << "Calculate Pose estimation" << endl;
-        for (i = 0; i < 6; i++) {
-          const guint index = pose_pts[i];
-          cv::Point2d pt (shape.part (index).x () / filter->scale_factor,
-                          shape.part (index).y () / filter->scale_factor);
-          image_points.push_back(pt);
+        if (filter->use_pose_estimation) {
+          cv::Mat rotation_matrix;
+          cout << "Calculate Pose estimation" << endl;
+          for (i = 0; i < 6; i++) {
+            const guint index = pose_pts[i];
+            cv::Point2d pt (shape.part (index).x () / filter->scale_factor,
+                            shape.part (index).y () / filter->scale_factor);
+            image_points.push_back(pt);
+          }
+          cv::solvePnP (*filter->pose_model_points, image_points, camera_matrix,
+              dist_coeffs, rotation_vector, translation_vector);
+
+          std::vector<cv::Point3d> nose_end_point3D;
+          std::vector<cv::Point2d> nose_end_point2D;
+          nose_end_point3D.push_back(cv::Point3d (0, 0, 1000.0));
+          nose_end_point3D.push_back(cv::Point3d (0, 1000.0, 0));
+          nose_end_point3D.push_back(cv::Point3d (-1000.0, 0, 0));
+
+          projectPoints(nose_end_point3D, rotation_vector, translation_vector,
+              camera_matrix, dist_coeffs, nose_end_point2D);
+
+          if (filter->display_pose_estimation) {
+            cv::line(cvImg, image_points[0], nose_end_point2D[0],
+                cv::Scalar(255, 0, 0), 2);
+            cv::line(cvImg, image_points[0], nose_end_point2D[1],
+                cv::Scalar(0, 255, 0), 2);
+            cv::line(cvImg, image_points[0], nose_end_point2D[2],
+                cv::Scalar(0, 0, 255), 2);
+          }
+
+          if (false) {
+            graphene_point3d_t rotation_graphene_vector;
+            GValue rotation_value = G_VALUE_INIT;
+
+            g_value_init (&rotation_value, GRAPHENE_TYPE_POINT);
+
+            cv::Rodrigues(rotation_vector, rotation_matrix);
+            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
+                rotation_matrix.at<float> (0,0),
+                rotation_matrix.at<float> (0,1),
+                rotation_matrix.at<float> (0,2));
+            g_value_set_boxed (&rotation_value, &rotation_graphene_vector);
+            gst_structure_set_value (facedata_st, "pose-rotation-vector",
+                &rotation_value);
+          }
+
+          cout << "n points" << nose_end_point2D.size () << endl;
+
+          cout << "Rotation Vector " << endl << rotation_vector << endl;
+          cout << "Translation Vector" << endl << translation_vector << endl;
+          cout <<  nose_end_point2D << endl;
         }
-        cv::solvePnP (*filter->pose_model_points, image_points, camera_matrix,
-            dist_coeffs, rotation_vector, translation_vector);
-
-        std::vector<cv::Point3d> nose_end_point3D;
-        std::vector<cv::Point2d> nose_end_point2D;
-        nose_end_point3D.push_back(cv::Point3d (0, 0, 1000.0));
-        nose_end_point3D.push_back(cv::Point3d (0, 1000.0, 0));
-        nose_end_point3D.push_back(cv::Point3d (-1000.0, 0, 0));
-
-        projectPoints(nose_end_point3D, rotation_vector, translation_vector,
-            camera_matrix, dist_coeffs, nose_end_point2D);
-
-        cv::line(cvImg, image_points[0], nose_end_point2D[0],
-            cv::Scalar(255, 0, 0), 2);
-        cv::line(cvImg, image_points[0], nose_end_point2D[1],
-            cv::Scalar(0, 255, 0), 2);
-        cv::line(cvImg, image_points[0], nose_end_point2D[2],
-            cv::Scalar(0, 0, 255), 2);
-
-        cout << "n points" << nose_end_point2D.size () << endl;
-
-        cout << "Rotation Vector " << endl << rotation_vector << endl;
-        cout << "Translation Vector" << endl << translation_vector << endl;
-        cout <<  nose_end_point2D << endl;
         /* end */
         for (j = 0; j < shape.num_parts (); j++) {
           if (filter->display_landmark) {
@@ -633,11 +678,12 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           }
         }
 
-        if (post_msg)
+        if (post_msg && face.last_detected_frame == filter->frame_number)
           gst_structure_set_value (facedata_st, "landmark", &landmark_values);
       }
     }
     if (post_msg) {
+      cout << "Append face values" << endl;
       g_value_take_boxed (&facedata_value, facedata_st);
       gst_value_list_append_value (&faces_values, &facedata_value);
     }
