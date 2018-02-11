@@ -1,7 +1,8 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
+ * Copyright (C) 2011 Laura Lucas Alday <lauralucas@gmail.com>
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -37,63 +38,62 @@
  *
  * You should have received a copy of the GNU Library General Public
  * License along with this library; if not, write to the
- * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
- * Boston, MA 02111-1307, USA.
+ * Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
  */
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
+#ifndef __GST_CHEESEFACEOVERLAY_H__
+#define __GST_CHEESEFACEOVERLAY_H__
 
 #include <gst/gst.h>
+#include <cairo.h>
+#include <graphene.h>
+#include <graphene-gobject.h>
+#include <gdk/gdk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
-#include "gstcheesefacedetect.h"
-#include "gstcheesefaceomelette.h"
-#include "gstcheesefaceoverlay.h"
+G_BEGIN_DECLS
 
+#define GST_TYPE_CHEESEFACEOVERLAY \
+  (gst_cheese_face_overlay_get_type())
+#define GST_CHEESEFACEOVERLAY(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CHEESEFACEOVERLAY,GstCheeseFaceOverlay))
+#define GST_CHEESEFACEOVERLAY_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CHEESEFACEOVERLAY,GstCheeseFaceOverlayClass))
+#define GST_IS_FACEOVERLAY(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CHEESEFACEOVERLAY))
+#define GST_IS_FACEOVERLAY_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CHEESEFACEOVERLAY))
 
-/* entry point to initialize the plug-in
- * initialize the plug-in itself
- * register the element factories and other features
- */
-static gboolean
-cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
+typedef struct _GstCheeseFaceOverlay GstCheeseFaceOverlay;
+typedef struct _GstCheeseFaceOverlayClass GstCheeseFaceOverlayClass;
+
+struct _GstCheeseFaceOverlay
 {
-  /* debug category for fltering log messages
-   *
-   * exchange the string 'Template cheesefaceeffects' with your description
-   */
-  gst_element_register (cheesefaceeffects, "cheesefacedetect",
-      GST_RANK_NONE, gst_cheese_face_detect_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceomelette",
-      GST_RANK_NONE, gst_cheese_face_omelette_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceoverlay",
-      GST_RANK_NONE, gst_cheese_face_overlay_get_type ());
+  GstBin parent;
 
-  return TRUE;
-}
+  GstPad *sinkpad, *srcpad;
 
-/* PACKAGE: this is usually set by autotools depending on some _INIT macro
- * in configure.ac and then written into and defined in config.h, but we can
- * just set it ourselves here in case someone doesn't use autotools to
- * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
- */
-#ifndef PACKAGE
-#define PACKAGE "myfirstcheesefaceeffects"
-#endif
+  GstElement *overlay;
+  gboolean draw;
 
-/* gstreamer looks for this structure to register cheesefaceeffectss
- *
- * exchange the string 'Template cheesefaceeffects' with your cheesefaceeffects description
- */
-GST_PLUGIN_DEFINE (
-    GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    cheesefaceeffects,
-    "Template cheesefaceeffects",
-    cheesefaceeffects_init,
-    VERSION,
-    "LGPL",
-    "GStreamer",
-    "http://gstreamer.net/"
-)
+  GPtrArray *locations;
+  GstStructure *st;
+
+  gchar *location;
+  gfloat x;
+  gfloat y;
+  gfloat w;
+  gfloat h;
+};
+
+struct _GstCheeseFaceOverlayClass
+{
+  GstBinClass parent_class;
+};
+
+GType gst_cheese_face_overlay_get_type (void);
+
+G_END_DECLS
+
+#endif /* __GST_CHEESEFACEOVERLAY_H__ */
