@@ -2,6 +2,7 @@ hungariandir = join_paths(meson.source_root(), 'hungarian-algorithm-cpp')
 face_sources = [
   'gstcheesefacedetect.cpp',
   'gstcheesefaceomelette.cpp',
+  'gstcheesefaceoverlay.c',
   'gstcheesefaceeffects.cpp',
   join_paths(hungariandir, 'Hungarian.cpp')
 ]
@@ -21,7 +22,7 @@ cairo_dep = dependency('cairo', version : ['>= 1.15.0'], required : true)
 
 if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
     and graphene_gobject_dep.found() and gdk_pixbuf_dep.found()
-    and cairo_dep.found() and json_glib_dep.found ())
+    and cairo_dep.found())
   face_args = []
   if host_machine.cpu_family().startswith('x86')
     face_args += '-DUSE_SSE41'
