@@ -668,7 +668,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
             cv::circle(cvImg, pt, 2, cv::Scalar (0, 0, 255), CV_FILLED);
           }
           if (post_msg) {
-            GValue point_value;
+            GValue point_value = G_VALUE_INIT;
             graphene_point_t graphene_point =
                 GRAPHENE_POINT_INIT (shape.part (j).x () / filter->scale_factor,
                     shape.part (j).y () / filter->scale_factor);
