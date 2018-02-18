@@ -531,6 +531,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
                                                     0, 0, 1);
   cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<double>::type);
 
+  guint text_i = 0;
   for (auto &kv : *filter->faces) {
     GValue facedata_value = G_VALUE_INIT;
     GstStructure *facedata_st;
@@ -631,17 +632,72 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           }
 
           if (post_msg) {
+            cv::Vec3d axis {0, 0, -1};
             graphene_point3d_t rotation_graphene_vector;
             GValue rotation_value = G_VALUE_INIT;
+            double dir_x, dir_y, dir_z, len;
+            cv::Mat direction_matrix;
 
-            g_value_init (&rotation_value, GRAPHENE_TYPE_POINT);
+            g_value_init (&rotation_value, GRAPHENE_TYPE_POINT3D);
 
             cv::Rodrigues(rotation_vector, rotation_matrix);
+            /*
+            direction_matrix = rotation_matrix * cv::Mat(axis, false);
+            dir_x = direction_matrix.at<double> (0);
+            dir_y = direction_matrix.at<double> (1);
+            dir_z = direction_matrix.at<double> (2);
+            len = sqrt (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
+            dir_x /= len;
+            dir_y /= len;
+            dir_z /= len;
+
+            dir_x = atan2 (rotation_matrix.at<float> (2,1), rotation_matrix.at<float> (2,2));
+            dir_y = atan2 (-rotation_matrix.at<float> (2,0),
+                sqrt (rotation_matrix.at<float> (2,1) * rotation_matrix.at<float> (2,1) +
+                      rotation_matrix.at<float> (2,2) * rotation_matrix.at<float> (2,2)));
+            dir_z = atan2 (rotation_matrix.at<float> (1,0), rotation_matrix.at<float> (0,0));
+            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (dir_x, dir_y,
+                dir_z);
+            */
+            /*
             rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
                 rotation_matrix.at<float> (0,0),
                 rotation_matrix.at<float> (0,1),
                 rotation_matrix.at<float> (0,2));
+            */
+
+            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
+                (float) rotation_vector.at<double> (0,0),
+                (float) rotation_vector.at<double> (1,0),
+                (float) rotation_vector.at<double> (2,0));
+
+            cout << "x: " << rotation_vector.at<double> (0,0) << endl;
+            cout << "y: " << rotation_vector.at<double> (1,0) << endl;
+            cout << "z: " << rotation_vector.at<double> (2,0) << endl;
+
+            cv::putText (cvImg,
+                g_strdup_printf ("x: %lf", rotation_graphene_vector.x),
+                cv::Point (10, (text_i + 1) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                cv::Scalar (0, 255, 0));
+            cv::putText (cvImg,
+                g_strdup_printf ("y: %lf", rotation_graphene_vector.y),
+                cv::Point (10, (text_i + 2) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                cv::Scalar (0, 255, 0));
+            cv::putText (cvImg,
+                g_strdup_printf ("z: %lf", rotation_graphene_vector.z),
+                cv::Point (10, (text_i + 3) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                cv::Scalar (0, 255, 0));
+
+            cout << "Rodrigues vector: " << endl;
+            cout << rotation_vector << endl;
+
+            cout << "rot(" << rotation_graphene_vector.x << ", "
+                << rotation_graphene_vector.y << ", "
+                << rotation_graphene_vector.z << ")" << endl;
+
+            text_i += 3;
             g_value_set_boxed (&rotation_value, &rotation_graphene_vector);
+            g_print ("Set rotation vector value :)\n");
             gst_structure_set_value (facedata_st, "pose-rotation-vector",
                 &rotation_value);
           }

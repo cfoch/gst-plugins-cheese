@@ -66,6 +66,8 @@
 #include <string>
 #include <map>
 
+#include <math.h>
+
 #include "Hungarian.h"
 
 

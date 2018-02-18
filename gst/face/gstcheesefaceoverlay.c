@@ -106,6 +106,108 @@ static void gst_cheese_face_overlay_reset_locations (GstCheeseFaceOverlay * filt
 static void gst_cheese_face_overlay_dispose (GObject * object);
 static void gst_cheese_face_overlay_set_location (GstCheeseFaceOverlay * filter,
     const char *str);
+static gboolean gst_cheese_face_overlay_add_sprite_from_file (
+    GstCheeseFaceOverlay * filter, const gchar * location);
+
+#define _ROTATION_VECTOR_IN_RANGE(v, vl, vr) ((v.x >= vl.x && v.y >= vl.y && v.z >= vl.z &&\
+                                               v.x < vr.x && v.y < vr.y && v.z < vr.z))
+
+static CheeseSpriteInfo *
+_lookup_sprite_info_index (CheeseSprite * sprite, graphene_point3d_t
+    face_rotation_vector) {
+  CheeseSpriteInfo *ret = NULL;
+  guint i;
+  g_print ("overlay_rot_face: [%lf, %lf, %lf]\n", face_rotation_vector.x,
+      face_rotation_vector.y, face_rotation_vector.z);
+  for (i = 0; i < sprite->infos->len; i++) {
+    CheeseSpriteInfo *info = (CheeseSpriteInfo *)
+        g_ptr_array_index (sprite->infos, i);
+    if (_ROTATION_VECTOR_IN_RANGE (face_rotation_vector, info->min_rotation,
+        info->max_rotation)) {
+      ret = info;
+      break;
+    }
+  }
+  return ret;
+}
+
+static gboolean
+gst_cheese_face_overlay_add_sprite_from_file (GstCheeseFaceOverlay * filter,
+    const gchar * location)
+{
+  struct CheeseSprite *sprite;
+  GIOChannel *file;
+  gsize length;
+  gsize terminator_pos;
+  GIOStatus status;
+  GError *error = NULL;
+  gchar *line;
+  guint line_number = 0;
+
+  file = g_io_channel_new_file (location, "r", &error);
+  if (error != NULL)
+    goto handle_error;
+
+  sprite = g_new (struct CheeseSprite, 1);
+
+  g_print ("gst_cheese_face_overlay_add_sprite_from_file\n");
+  while (TRUE) {
+    gchar **tokens;
+    status = g_io_channel_read_line (file, &line, &length, &terminator_pos,
+        &error);
+
+    if (status == G_IO_STATUS_ERROR)
+      goto handle_error;
+    else if (status == G_IO_STATUS_EOF)
+      break;
+    /*
+    if (error != NULL) {
+      g_print ("Blah\n");
+      goto handle_error;
+    }*/
+    tokens = g_strsplit (line, ",", -1);
+    g_print (line);
+    if (line_number == 0) {
+      guint n_rotation_lines;
+      if (g_strv_length (tokens) != 2)
+        goto format_error;
+      n_rotation_lines = g_ascii_strtoull (tokens[1], NULL, 10);
+      sprite->facial_keypoint_index = g_ascii_strtoull (tokens[0], NULL, 10);
+      sprite->infos = g_ptr_array_sized_new (n_rotation_lines);
+      // g_print ("%d,%d\n", sprite->facial_keypoint_index, n_rotation_lines);
+    } else {
+      struct CheeseSpriteInfo *info;
+      if (g_strv_length (tokens) != 7)
+        goto format_error;
+
+      info = g_new (struct CheeseSpriteInfo, 1);
+      info->location = g_strdup (tokens[0]);
+      info->min_rotation.x = g_strtod (tokens[1], NULL);
+      info->min_rotation.y = g_strtod (tokens[2], NULL);
+      info->min_rotation.z = g_strtod (tokens[3], NULL);
+      info->max_rotation.x = g_strtod (tokens[4], NULL);
+      info->max_rotation.y = g_strtod (tokens[5], NULL);
+      info->max_rotation.z = g_strtod (tokens[6], NULL);
+      g_ptr_array_add (sprite->infos, info);
+    }
+    line_number++;
+  }
+  g_ptr_array_add (filter->sprites, sprite);
+
+  return TRUE;
+format_error:
+  {
+    g_print ("FORMAT ERROR\n");
+    return FALSE;
+  }
+handle_error:
+  {
+    g_print ("HANDLE ERROR\n");
+    /* TODO */
+    /* Handle error properly */
+    return FALSE;
+  }
+}
 
 static gboolean
 gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter)
@@ -125,7 +227,9 @@ gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter)
     goto element_not_found;
 
   /* g_object_set (face_detect, "display", FALSE, NULL); */
-  g_object_set (face_detect, "scale-factor", 0.5, NULL);
+  g_object_set (face_detect, "scale-factor", 0.5,
+      "landmark", "/home/cfoch/Documents/git/gst-plugins-cheese/shape_predictor_68_face_landmarks.dat",
+      NULL);
 
   gst_bin_add_many (GST_BIN (filter), face_detect, converter, overlay, NULL);
   filter->overlay = overlay;
@@ -226,24 +330,82 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
     return;
   }
   for (i = 0; i < face_count; i++) {
-    const GValue *bounding_box_value;
+    CheeseSprite *sprite;
+    CheeseSpriteInfo *sprite_info;
+    const GValue *id_value, *bounding_box_value, *face_rotation_vector_value;
     graphene_rect_t *bounding_box_ptr;
+    graphene_point3d_t *face_rotation_vector_ptr;
+    guint face_id;
     guint x, y, width, height, img_width, img_height;
     gfloat img_scale_factor;
     GdkPixbuf *pixbuf;
+    GError *pixbuf_err = NULL;
 
+
+    g_print ("Face (%d)\n", i);
     face_val = gst_value_list_get_value (faces_list, i);
     face = gst_value_get_structure (face_val);
+    /* face_id = g_value_get_uint (id_value); */
+
+    id_value = gst_structure_get_value (face, "id");
+    face_id = g_value_get_uint (id_value);
     bounding_box_value = gst_structure_get_value (face, "bounding-box");
     bounding_box_ptr =
-      (graphene_rect_t *) g_value_get_boxed (bounding_box_value);
+        (graphene_rect_t *) g_value_get_boxed (bounding_box_value);
+    face_rotation_vector_value = gst_structure_get_value (face,
+        "pose-rotation-vector");
+    g_print ("pose value: %p\n", face_rotation_vector_value);
+    face_rotation_vector_ptr =
+        (graphene_point3d_t *) g_value_get_boxed (face_rotation_vector_value);
 
     x = graphene_rect_get_x (bounding_box_ptr);
     y = graphene_rect_get_y (bounding_box_ptr);
     width = graphene_rect_get_width (bounding_box_ptr);
     height = graphene_rect_get_height (bounding_box_ptr);
 
-    pixbuf = g_ptr_array_index (filter->locations, i % filter->locations->len);
+    sprite =
+        g_hash_table_lookup (filter->sprites_map, GINT_TO_POINTER (face_id));
+    if (!sprite) {
+      sprite = g_ptr_array_index (filter->sprites, filter->next_sprite);
+      g_print ("sprite found at %p\n", sprite);
+      g_print ("Insert sprite at %d\n", face_id);
+      g_hash_table_insert (filter->sprites_map, GINT_TO_POINTER (face_id),
+          sprite);
+      g_print ("Inserted sprite at %d\n", face_id);
+      filter->next_sprite = (filter->next_sprite + 1) % filter->sprites->len;
+      g_print ("next sprite at pos %d\n", filter->next_sprite);
+    }
+
+    sprite_info = _lookup_sprite_info_index (sprite, *face_rotation_vector_ptr);
+    if (!sprite_info) {
+      /* TODO */
+      /* Free stuff */
+      g_print ("Error: not found sprite for the given rotation vector"
+          "(%lf, %lf, %lf)\n", face_rotation_vector_ptr->x,
+          face_rotation_vector_ptr->y, face_rotation_vector_ptr->z);
+      continue;
+    } else {
+      g_print ("Read successfuly sprite for the given rotation vector"
+          "(%lf, %lf, %lf)\n", face_rotation_vector_ptr->x,
+          face_rotation_vector_ptr->y, face_rotation_vector_ptr->z);
+    }
+
+    g_print ("There sprite info: Location: %s\n", sprite_info->location);
+
+    pixbuf = gdk_pixbuf_new_from_file (sprite_info->location, &pixbuf_err);
+    g_print ("just after reading pixbuf\n");
+    if (pixbuf_err) {
+      g_print ("ergrrrrr\n");
+      GST_DEBUG_OBJECT (filter, "Error: %s", pixbuf_err->message);
+      /* TODO */
+      /* Free stuff */
+      g_print ("Error: %s\n", pixbuf_err->message);
+      continue;
+    } else {
+      GST_LOG ("File \"%s\" added", sprite_info->location);
+      g_print ("Sprite file read successfully: %s\n", sprite_info->location);
+    }
+    g_print ("after reading pixbuf\n");
     GST_LOG_OBJECT (filter, "Drawing image \"%d\" at (%d, %d)", i, x, y);
 
     /*
@@ -253,8 +415,8 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
     height *= filter->h;
     */
     img_scale_factor = height / (gfloat) gdk_pixbuf_get_height (pixbuf);
-    img_width = gdk_pixbuf_get_width (pixbuf) * img_scale_factor;
-    img_height = height;
+    img_width = gdk_pixbuf_get_width (pixbuf) * img_scale_factor * 1.5;
+    img_height = height * 1.5;
 
     g_print ("scale factor: %lf\n", width * img_scale_factor);
     pixbuf = gdk_pixbuf_scale_simple (pixbuf, img_width, img_height,
@@ -346,6 +508,9 @@ gst_cheese_face_overlay_init (GstCheeseFaceOverlay * filter)
   filter->location = NULL;
   filter->draw = FALSE;
   filter->locations = g_ptr_array_new ();
+  filter->sprites = g_ptr_array_new ();
+  filter->sprites_map = g_hash_table_new (g_direct_hash, g_direct_equal);
+  filter->next_sprite = 0;
   filter->location = NULL;
 
   tmpl = gst_static_pad_template_get (&sink_factory);
@@ -475,7 +640,8 @@ gst_cheese_face_overlay_set_location (GstCheeseFaceOverlay * filter,
   gst_cheese_face_overlay_reset_locations (filter);
   locations = g_strsplit (str, ",", -1);
   for (i = 0; locations && locations[i]; i++) {
-   GdkPixbuf *pixbuf;
+    /*
+    GdkPixbuf *pixbuf;
     GError *pixbuf_err = NULL;
     pixbuf = gdk_pixbuf_new_from_file (locations[i], &pixbuf_err);
     if (pixbuf_err) {
@@ -484,6 +650,8 @@ gst_cheese_face_overlay_set_location (GstCheeseFaceOverlay * filter,
     } else
       GST_LOG ("File \"%s\" added", locations[i]);
     g_ptr_array_add (filter->locations, (gpointer) pixbuf);
+    */
+    gst_cheese_face_overlay_add_sprite_from_file (filter, locations[i]);
   }
   g_strfreev (locations);
 }

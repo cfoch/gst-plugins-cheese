@@ -66,6 +66,20 @@ G_BEGIN_DECLS
 typedef struct _GstCheeseFaceOverlay GstCheeseFaceOverlay;
 typedef struct _GstCheeseFaceOverlayClass GstCheeseFaceOverlayClass;
 
+typedef struct CheeseSpriteInfo CheeseSpriteInfo;
+typedef struct CheeseSprite CheeseSprite;
+
+struct CheeseSpriteInfo {
+  gchar *location;
+  graphene_point3d_t min_rotation;
+  graphene_point3d_t max_rotation;
+};
+
+struct CheeseSprite {
+  guint facial_keypoint_index;
+  GPtrArray *infos;
+};
+
 struct _GstCheeseFaceOverlay
 {
   GstBin parent;
@@ -76,6 +90,9 @@ struct _GstCheeseFaceOverlay
   gboolean draw;
 
   GPtrArray *locations;
+  GPtrArray *sprites;
+  GHashTable *sprites_map;
+  guint next_sprite;
   GstStructure *st;
 
   gchar *location;
