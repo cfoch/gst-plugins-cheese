@@ -134,6 +134,9 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
   GstElementClass *gstelement_class;
   GstOpencvVideoFilterClass *gstopencvbasefilter_class;
 
+  GST_DEBUG_CATEGORY_INIT (gst_cheese_face_detect_debug, "gstcheesefacedetect",
+      0, "Cheese Face Detect");
+
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
   gstopencvbasefilter_class = (GstOpencvVideoFilterClass *) klass;
@@ -205,11 +208,6 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
       gst_static_pad_template_get (&sink_factory));
 }
 
-/* initialize the new element
- * instantiate pads and add them to element
- * set pad calback functions
- * initialize instance structure
- */
 static void
 gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 {
@@ -232,17 +230,22 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 
   filter->pose_model_points = new std::vector<cv::Point3d>;
 
-  filter->pose_model_points->push_back (cv::Point3d (0.0f, 0.0f, 0.0f));               // Nose tip
-  filter->pose_model_points->push_back (cv::Point3d (0.0f, -330.0f, -65.0f));          // Chin
-  filter->pose_model_points->push_back (cv::Point3d (-225.0f, 170.0f, -135.0f));       // Left eye left corner
-  filter->pose_model_points->push_back (cv::Point3d (225.0f, 170.0f, -135.0f));        // Right eye right corner
-  filter->pose_model_points->push_back (cv::Point3d (-150.0f, -150.0f, -125.0f));      // Left Mouth corner
-  filter->pose_model_points->push_back (cv::Point3d (150.0f, -150.0f, -125.0f));       // Right mouth corner
+  /* Pose estimation 3D model */
+  /* Nose tip */
+  filter->pose_model_points->push_back (cv::Point3d (0.f, 0.f, 0.f));
+  /* Chin */
+  filter->pose_model_points->push_back (cv::Point3d (0.f, -330.f, -65.f));
+  /* Left eye left corner */
+  filter->pose_model_points->push_back (cv::Point3d (-225.f, 170.f, -135.f));
+  /* Right eye right corner */
+  filter->pose_model_points->push_back (cv::Point3d (225.f, 170.f, -135.f));
+  /* Left Mouth corner */
+  filter->pose_model_points->push_back (cv::Point3d (-150.f, -150.f, -125.f));
+  /* Right mouth corner */
+  filter->pose_model_points->push_back (cv::Point3d (150.f, -150.f, -125.f));
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
-
-  g_print ("CV Optimized: %d\n", cv::useOptimized());
 }
 
 static void
@@ -424,9 +427,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   cv::Mat resizedImg;
   cv_image<bgr_pixel> dlib_img;
 
-  cout << "height: " << img->height << endl;
-  cout << "width: " << img->width << endl;
-
+  GST_DEBUG ("Frame size: %d (height) x %d (width).", img->height, img->width);
   if (post_msg) {
     msg = gst_cheese_face_detect_message_new (filter, buf);
     g_value_init (&faces_values, GST_TYPE_LIST);
@@ -437,8 +438,9 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     cv::resize(cvImg, resizedImg, cv::Size(img->width * filter->scale_factor,
         img->height * filter->scale_factor));
 
-    cout << "new height: " << resizedImg.rows << endl;
-    cout << "new width: " << resizedImg.cols << endl;
+    GST_DEBUG ("Image scaled by the factor %.2f. New image processing size: "
+        "%d (height) x %d (width).", filter->scale_factor,
+        resizedImg.rows, resizedImg.cols);
 
     dlib_img = cv_image<bgr_pixel> (resizedImg);
   } else
@@ -485,18 +487,18 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       CheeseFace face = kv.second;
 
       delta_since_detected = filter->frame_number - face.last_detected_frame;
-      cout << "delta[" << id << "]=" << delta_since_detected << endl;
+      GST_DEBUG ("Face %d: number of frames passed since last detection of "
+          "face is delta=%d.", id, delta_since_detected);
+
       if (delta_since_detected > filter->hungarian_delete_threshold) {
-        cout << "TO DELETE ID " << id << endl;
+        GST_DEBUG ("Face %d will be deleted: "
+            "delta=%d > hungarian-delete-threshold=%d.", id,
+            delta_since_detected, filter->hungarian_delete_threshold);
         to_remove.push_back (id);
       }
     }
     for (i = 0; i < to_remove.size (); i++) {
-      /*const guint id = to_remove[i];
-      std::map<guint,CheeseFace>::iterator it;
-      it = mymap.find(id);
-      */
-      cout << "DELETED ID " << to_remove[i] << endl;
+      GST_DEBUG ("Face %d was deleted.", i);
       filter->faces->erase (to_remove[i]);
     }
   }
@@ -509,8 +511,6 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     std::vector<guint> faces_keys;
     std::vector<CheeseFace *> faces_vals;
     std::vector<int> assignment;
-
-    cout << "Calculate current centroids" << endl;
 
     // Calculate current centroids.
     for (i = 0; i < dets.size(); i++) {
@@ -526,7 +526,9 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       faces_vals.push_back(face);
     }
 
-    cout << "Initialize cost matrix" << endl;
+    GST_DEBUG ("Hungarian method: initialize cost matrix of "
+        "previous detected faces x current detected faces: %d(rows) x %d(cols)",
+        (gint) faces_vals.size (), (gint) cur_centroids.size ());
     /* Initialize cost matrix. */
     for (r = 0; r < faces_vals.size (); r++) {
       std::vector<double> row;
@@ -540,22 +542,28 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     }
 
     /* Solve the Hungarian problem */
-    cout << "Solve the Hungarian problem" << endl;
+    GST_DEBUG ("Hungarian method: solve the Hungarian problem.");
     HungAlgo.Solve(cost_matrix, assignment);
 
     /* Reorder faces */
-    cout << "Reordering faces" << endl;
+    GST_DEBUG ("Hungarian method: reorder faces according the solution of the"
+        "Hungarian problem.");
     for (i = 0; i < faces_vals.size(); i++) {
       if (assignment[i] == -1) {
-        cout << "A face was not detected" << endl;
+        GST_DEBUG ("Hungarian method: current detected face at position %d "
+            "will be ignored.", i);
       } else {
         faces_vals[i]->bounding_box = dets[assignment[i]];
         faces_vals[i]->centroid = calculate_centroid (dets[assignment[i]]);
         faces_vals[i]->last_detected_frame = filter->frame_number;
+        GST_DEBUG ("Hungarian method: previous detected face %d mapped to "
+            "current detected face at position %d.", i, assignment[i]);
       }
     }
 
     /* Create new faces */
+    GST_DEBUG ("Create new faces for restant faces not assigned by the "
+        "Hungarian method.");
     for (i = 0; i < dets.size (); i++) {
       if (!(std::find (assignment.begin(), assignment.end (), i) !=
           assignment.end ())) {
@@ -564,6 +572,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         face_info.bounding_box = dets[i];
         face_info.centroid = calculate_centroid(dets[i]);
         (*filter->faces)[++filter->last_face_id] = face_info;
+        GST_DEBUG ("Face %d has been created.", filter->last_face_id);
       }
     }
   }
@@ -588,7 +597,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     guint pose_pts[6] = {30, 8, 36, 45, 48, 54};
 
     if (post_msg && face.last_detected_frame == filter->frame_number) {
-      facedata_st = gst_structure_new ("face", NULL);
+      facedata_st = gst_structure_new_empty ("face");
       g_value_init (&facedata_value, GST_TYPE_STRUCTURE);
     }
 
@@ -604,6 +613,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           face.bounding_box.height ());
       g_value_set_boxed (&box_value, &graphene_bounding_box);
       gst_structure_set_value (facedata_st, "bounding-box", &box_value);
+      GST_DEBUG ("Face %d: add bounding box information to the message.", id);
     }
     /* Draw bounding box of the face */
     if (filter->display_bounding_box &&
@@ -612,6 +622,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       tl = cv::Point(face.bounding_box.left(), face.bounding_box.top());
       br = cv::Point(face.bounding_box.right(), face.bounding_box.bottom());
       cv::rectangle (cvImg, tl, br, cv::Scalar (0, 255, 0));
+      GST_DEBUG ("Face %d: drawing bounding.", id);
     }
 
     /* Post the ID assigned to the face */
@@ -620,11 +631,15 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
       g_value_init (&id_value, G_TYPE_UINT);
       g_value_set_uint (&id_value, id);
       gst_structure_set_value (facedata_st, "id", &id_value);
+      GST_DEBUG ("Face %d: add id information to the message.", id);
     }
     /* Draw ID assigned to the face */
-    if (filter->display_id && face.last_detected_frame == filter->frame_number)
+    if (filter->display_id &&
+        face.last_detected_frame == filter->frame_number) {
       cv::putText (cvImg, std::to_string (id), face.centroid,
           cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (255, 0, 0));
+      GST_DEBUG ("Face %d: drawing id.", id);
+    }
 
     if (filter->shape_predictor) {
       dlib::rectangle scaled_det (
@@ -633,6 +648,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           face.bounding_box.right () * filter->scale_factor,
           face.bounding_box.bottom () * filter->scale_factor);
 
+      GST_DEBUG ("Face %d: detect landmark.", id);
       dlib::full_object_detection shape =
           (*filter->shape_predictor) (dlib_img, scaled_det);
 
@@ -647,7 +663,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         /* Pose estimation */
         if (filter->use_pose_estimation) {
           cv::Mat rotation_matrix;
-          cout << "Calculate Pose estimation" << endl;
+          GST_DEBUG ("Face %d: calculate pose estimation.", id);
           for (i = 0; i < 6; i++) {
             const guint index = pose_pts[i];
             cv::Point2d pt (shape.part (index).x () / filter->scale_factor,
@@ -666,6 +682,12 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           projectPoints(nose_end_point3D, rotation_vector, translation_vector,
               camera_matrix, dist_coeffs, nose_end_point2D);
 
+          GST_DEBUG ("Face %d: rotation vector is (%.4f, %.4f, %.4f).", id,
+              rotation_vector.at<double> (0, 0),
+              rotation_vector.at<double> (1, 0),
+              rotation_vector.at<double> (2, 0));
+          /* TODO: Debug translation matrix */
+
           if (filter->display_pose_estimation) {
             cv::line(cvImg, image_points[0], nose_end_point2D[0],
                 cv::Scalar(255, 0, 0), 2);
@@ -673,6 +695,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
                 cv::Scalar(0, 255, 0), 2);
             cv::line(cvImg, image_points[0], nose_end_point2D[2],
                 cv::Scalar(0, 0, 255), 2);
+            GST_DEBUG ("Face %d: drawing pose estimation axis.", id);
           }
 
           if (post_msg) {
@@ -687,45 +710,17 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
             cv::Rodrigues(rotation_vector, rotation_matrix);
             cv::Mat measured_eulers(3, 1, CV_64F);
             measured_eulers = rot2euler(rotation_matrix);
-            /*
-            direction_matrix = rotation_matrix * cv::Mat(axis, false);
-            dir_x = direction_matrix.at<double> (0);
-            dir_y = direction_matrix.at<double> (1);
-            dir_z = direction_matrix.at<double> (2);
-            len = sqrt (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
-            dir_x /= len;
-            dir_y /= len;
-            dir_z /= len;
-
-            dir_x = atan2 (rotation_matrix.at<float> (2,1), rotation_matrix.at<float> (2,2));
-            dir_y = atan2 (-rotation_matrix.at<float> (2,0),
-                sqrt (rotation_matrix.at<float> (2,1) * rotation_matrix.at<float> (2,1) +
-                      rotation_matrix.at<float> (2,2) * rotation_matrix.at<float> (2,2)));
-            dir_z = atan2 (rotation_matrix.at<float> (1,0), rotation_matrix.at<float> (0,0));
-            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (dir_x, dir_y,
-                dir_z);
-            */
-            /*
-            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
-                rotation_matrix.at<float> (0,0),
-                rotation_matrix.at<float> (0,1),
-                rotation_matrix.at<float> (0,2));
-            */
 
             rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
                 (float) measured_eulers.at<double> (0),
                 (float) measured_eulers.at<double> (1),
                 (float) measured_eulers.at<double> (2));
-            /*
-            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
-                (float) rotation_vector.at<double> (0,0),
-                (float) rotation_vector.at<double> (1,0),
-                (float) rotation_vector.at<double> (2,0));
-            */
 
-            cout << "x: " << measured_eulers.at<double> (0,0) << endl;
-            cout << "y: " << measured_eulers.at<double> (1,0) << endl;
-            cout << "z: " << measured_eulers.at<double> (2,0) << endl;
+            /* TODO */
+            /* DEBUG Rotation matrix */
+            GST_DEBUG ("Face %d: euler angles are (%.4f, %.4f, %.4f).", id,
+                rotation_graphene_vector.x, rotation_graphene_vector.y,
+                rotation_graphene_vector.z);
 
             cv::putText (cvImg,
                 g_strdup_printf ("x: %lf", rotation_graphene_vector.x),
@@ -740,25 +735,12 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
                 cv::Point (10, (text_i + 3) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
                 cv::Scalar (0, 255, 0));
 
-            cout << "Rodrigues vector: " << endl;
-            cout << rotation_vector << endl;
-
-            cout << "rot(" << rotation_graphene_vector.x << ", "
-                << rotation_graphene_vector.y << ", "
-                << rotation_graphene_vector.z << ")" << endl;
-
             text_i += 3;
             g_value_set_boxed (&rotation_value, &rotation_graphene_vector);
-            g_print ("Set rotation vector value :)\n");
             gst_structure_set_value (facedata_st, "pose-rotation-vector",
                 &rotation_value);
+            GST_DEBUG ("Face %d: add pose euler angles to the message.", id);
           }
-
-          cout << "n points" << nose_end_point2D.size () << endl;
-
-          cout << "Rotation Vector " << endl << rotation_vector << endl;
-          cout << "Translation Vector" << endl << translation_vector << endl;
-          cout <<  nose_end_point2D << endl;
         }
         /* end */
         for (j = 0; j < shape.num_parts (); j++) {
@@ -778,14 +760,17 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           }
         }
 
-        if (post_msg && face.last_detected_frame == filter->frame_number)
+        if (post_msg && face.last_detected_frame == filter->frame_number) {
           gst_structure_set_value (facedata_st, "landmark", &landmark_values);
+          GST_DEBUG ("Face %d: add landmark information to the message.", id);
+        }
       }
     }
-    if (post_msg) {
-      cout << "Append face values" << endl;
+    if (post_msg && face.last_detected_frame == filter->frame_number) {
       g_value_take_boxed (&facedata_value, facedata_st);
       gst_value_list_append_value (&faces_values, &facedata_value);
+      g_value_unset (&facedata_value);
+      GST_DEBUG ("Faces: append message with information about face %d.", id);
     }
   }
   cvImg.release ();
@@ -796,6 +781,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         "faces", &faces_values);
     g_value_unset (&faces_values);
     gst_element_post_message (GST_ELEMENT (filter), msg);
+    GST_DEBUG ("Faces: post the message to the bus.");
   }
 
   cout << "Elapsed time in miliseconds: " <<
@@ -812,7 +798,6 @@ gst_cheese_face_detect_finalize (GObject * obj)
 {
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (obj);
 
-  cout << "bye :) " << endl;
   if (filter->face_detector)
     delete filter->face_detector;
   if (filter->shape_predictor)
