@@ -10,7 +10,7 @@ STEPPER_DIR = os.path.dirname(os.path.realpath(__file__))
 
 SHAPE_MODEL = "/home/cfoch/Documents/git/gst-plugins-cheese/shape_predictor_68_face_landmarks.dat"
 
-PEOPLE1_PATH = "/home/cfoch/Videos/people.ogv"
+PEOPLE1_PATH = "/home/cfoch/Videos/paolo.ogv"
 PEOPLE2_PATH = "/home/cfoch/Videos/people2.ogv"
 
 
@@ -48,7 +48,7 @@ class Player(Gtk.Window):
 
     def create_pipeline(self):
         spipeline = "filesrc name=source ! decodebin ! videoconvert ! "\
-                    "cheesefacedetect name=face_detect ! "\
+                    "cheesefaceoverlay name=face_detect ! "\
                     "videoconvert ! gtksink name=sink"
 
         self.pipeline = Gst.parse_launch(spipeline)
@@ -57,13 +57,8 @@ class Player(Gtk.Window):
         self.sink = self.pipeline.get_by_name("sink")
 
         self.source.set_property("location", PEOPLE1_PATH)
-        self.facedetect.set_property("display-bounding-box", True)
-        self.facedetect.set_property("display-id", True)
-        self.facedetect.set_property("display-landmark", True)
-        self.facedetect.set_property("landmark", SHAPE_MODEL)
-        self.facedetect.set_property("use-hungarian", True)
-        self.facedetect.set_property("hungarian-delete-threshold", 72)
-        self.facedetect.set_property("scale-factor", 0.8)
+        self.facedetect.set_property("location",
+            "/home/cfoch/Documents/git/gst-plugins-cheese/blender/anonymous-xyz/anonymous.sprite")
 
         # GObject.timeout_add(300, self._duration_querier, self.pipeline)
 

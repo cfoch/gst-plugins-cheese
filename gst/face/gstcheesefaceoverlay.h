@@ -71,12 +71,13 @@ typedef struct CheeseSprite CheeseSprite;
 
 struct CheeseSpriteInfo {
   gchar *location;
+  graphene_point_t keypoint_pixel_location;
   graphene_point3d_t min_rotation;
   graphene_point3d_t max_rotation;
 };
 
 struct CheeseSprite {
-  guint facial_keypoint_index;
+  guint keypoint_index;
   GPtrArray *infos;
 };
 

@@ -48,6 +48,7 @@
 #include <gst/gst.h>
 
 #include "gstcheese3dfilter.h"
+#include "gstcheese3dtestsrc.h"
 
 
 /* entry point to initialize the plug-in
@@ -61,8 +62,12 @@ cheese3d_init (GstPlugin * cheese3d)
    *
    * exchange the string 'Template cheesefaceeffects' with your description
    */
-  return gst_element_register (cheese3d, "cheese3dfilter",
+  gst_element_register (cheese3d, "cheese3dfilter",
       GST_RANK_NONE, gst_cheese_3d_filter_get_type());
+  gst_element_register (cheese3d, "cheese3dtestsrc",
+      GST_RANK_NONE, gst_cheese_3d_test_src_get_type());
+
+  return TRUE;
 }
 
 /* PACKAGE: this is usually set by autotools depending on some _INIT macro

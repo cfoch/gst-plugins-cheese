@@ -241,6 +241,8 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
+
+  g_print ("CV Optimized: %d\n", cv::useOptimized());
 }
 
 static void
@@ -360,6 +362,48 @@ calculate_centroid(dlib::rectangle & rectangle)
   tl = cv::Point(rectangle.left(), rectangle.top());
   br = cv::Point(rectangle.right(), rectangle.bottom());
   return (tl + br) / 2;
+}
+
+
+/* Took from examples OpenCV source code */
+// Converts a given Rotation Matrix to Euler angles
+cv::Mat rot2euler(const cv::Mat & rotationMatrix)
+{
+  cv::Mat euler(3,1,CV_64F);
+
+  double m00 = rotationMatrix.at<double>(0,0);
+  double m02 = rotationMatrix.at<double>(0,2);
+  double m10 = rotationMatrix.at<double>(1,0);
+  double m11 = rotationMatrix.at<double>(1,1);
+  double m12 = rotationMatrix.at<double>(1,2);
+  double m20 = rotationMatrix.at<double>(2,0);
+  double m22 = rotationMatrix.at<double>(2,2);
+
+  double x, y, z;
+
+  // Assuming the angles are in radians.
+  if (m10 > 0.998) { // singularity at north pole
+    x = 0;
+    y = CV_PI/2;
+    z = atan2(m02,m22);
+  }
+  else if (m10 < -0.998) { // singularity at south pole
+    x = 0;
+    y = -CV_PI/2;
+    z = atan2(m02,m22);
+  }
+  else
+  {
+    x = atan2(-m12,m11);
+    y = asin(m10);
+    z = atan2(-m20,m00);
+  }
+
+  euler.at<double>(0) = x;
+  euler.at<double>(1) = y;
+  euler.at<double>(2) = z;
+
+  return euler;
 }
 
 /* chain function
@@ -641,6 +685,8 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
             g_value_init (&rotation_value, GRAPHENE_TYPE_POINT3D);
 
             cv::Rodrigues(rotation_vector, rotation_matrix);
+            cv::Mat measured_eulers(3, 1, CV_64F);
+            measured_eulers = rot2euler(rotation_matrix);
             /*
             direction_matrix = rotation_matrix * cv::Mat(axis, false);
             dir_x = direction_matrix.at<double> (0);
@@ -667,13 +713,19 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
             */
 
             rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
+                (float) measured_eulers.at<double> (0),
+                (float) measured_eulers.at<double> (1),
+                (float) measured_eulers.at<double> (2));
+            /*
+            rotation_graphene_vector = GRAPHENE_POINT3D_INIT (
                 (float) rotation_vector.at<double> (0,0),
                 (float) rotation_vector.at<double> (1,0),
                 (float) rotation_vector.at<double> (2,0));
+            */
 
-            cout << "x: " << rotation_vector.at<double> (0,0) << endl;
-            cout << "y: " << rotation_vector.at<double> (1,0) << endl;
-            cout << "z: " << rotation_vector.at<double> (2,0) << endl;
+            cout << "x: " << measured_eulers.at<double> (0,0) << endl;
+            cout << "y: " << measured_eulers.at<double> (1,0) << endl;
+            cout << "z: " << measured_eulers.at<double> (2,0) << endl;
 
             cv::putText (cvImg,
                 g_strdup_printf ("x: %lf", rotation_graphene_vector.x),

@@ -172,22 +172,25 @@ gst_cheese_face_overlay_add_sprite_from_file (GstCheeseFaceOverlay * filter,
       if (g_strv_length (tokens) != 2)
         goto format_error;
       n_rotation_lines = g_ascii_strtoull (tokens[1], NULL, 10);
-      sprite->facial_keypoint_index = g_ascii_strtoull (tokens[0], NULL, 10);
+      sprite->keypoint_index = g_ascii_strtoull (tokens[0], NULL, 10);
       sprite->infos = g_ptr_array_sized_new (n_rotation_lines);
-      // g_print ("%d,%d\n", sprite->facial_keypoint_index, n_rotation_lines);
+      g_print ("%d,%d\n", sprite->keypoint_index, n_rotation_lines);
     } else {
       struct CheeseSpriteInfo *info;
-      if (g_strv_length (tokens) != 7)
+      if (g_strv_length (tokens) != 9)
         goto format_error;
 
       info = g_new (struct CheeseSpriteInfo, 1);
+      g_print ("%s,%s,%s...\n", tokens[0], tokens[1], tokens[2]);
       info->location = g_strdup (tokens[0]);
-      info->min_rotation.x = g_strtod (tokens[1], NULL);
-      info->min_rotation.y = g_strtod (tokens[2], NULL);
-      info->min_rotation.z = g_strtod (tokens[3], NULL);
-      info->max_rotation.x = g_strtod (tokens[4], NULL);
-      info->max_rotation.y = g_strtod (tokens[5], NULL);
-      info->max_rotation.z = g_strtod (tokens[6], NULL);
+      info->keypoint_pixel_location.x = g_ascii_strtoull (tokens[1], NULL, 10);
+      info->keypoint_pixel_location.y = g_ascii_strtoull (tokens[2], NULL, 10);
+      info->min_rotation.x = g_strtod (tokens[3], NULL);
+      info->min_rotation.y = g_strtod (tokens[4], NULL);
+      info->min_rotation.z = g_strtod (tokens[5], NULL);
+      info->max_rotation.x = g_strtod (tokens[6], NULL);
+      info->max_rotation.y = g_strtod (tokens[7], NULL);
+      info->max_rotation.z = g_strtod (tokens[8], NULL);
       g_ptr_array_add (sprite->infos, info);
     }
     line_number++;
@@ -227,7 +230,7 @@ gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter)
     goto element_not_found;
 
   /* g_object_set (face_detect, "display", FALSE, NULL); */
-  g_object_set (face_detect, "scale-factor", 0.5,
+  g_object_set (face_detect, "scale-factor", 0.5, "display-landmark", TRUE,
       "landmark", "/home/cfoch/Documents/git/gst-plugins-cheese/shape_predictor_68_face_landmarks.dat",
       NULL);
 
@@ -333,10 +336,12 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
     CheeseSprite *sprite;
     CheeseSpriteInfo *sprite_info;
     const GValue *id_value, *bounding_box_value, *face_rotation_vector_value;
+    const GValue *landmark_keypoints_value, *landmark_nose_keypoint_value;
     graphene_rect_t *bounding_box_ptr;
     graphene_point3d_t *face_rotation_vector_ptr;
     guint face_id;
-    guint x, y, width, height, img_width, img_height;
+    graphene_point_t *landmark_nose_keypoint_ptr;
+    guint x, y, width, height, img_width, img_height, img_x, img_y;
     gfloat img_scale_factor;
     GdkPixbuf *pixbuf;
     GError *pixbuf_err = NULL;
@@ -349,14 +354,23 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
 
     id_value = gst_structure_get_value (face, "id");
     face_id = g_value_get_uint (id_value);
+
     bounding_box_value = gst_structure_get_value (face, "bounding-box");
     bounding_box_ptr =
         (graphene_rect_t *) g_value_get_boxed (bounding_box_value);
+
     face_rotation_vector_value = gst_structure_get_value (face,
         "pose-rotation-vector");
     g_print ("pose value: %p\n", face_rotation_vector_value);
     face_rotation_vector_ptr =
         (graphene_point3d_t *) g_value_get_boxed (face_rotation_vector_value);
+
+    /* Get the coordinate of the nose. Nose is at index 30 of the array. */ 
+    landmark_keypoints_value = gst_structure_get_value (face, "landmark");
+    landmark_nose_keypoint_value =
+        gst_value_array_get_value (landmark_keypoints_value, 30);
+    landmark_nose_keypoint_ptr =
+        (graphene_point_t *) g_value_get_boxed (landmark_nose_keypoint_value);
 
     x = graphene_rect_get_x (bounding_box_ptr);
     y = graphene_rect_get_y (bounding_box_ptr);
@@ -414,14 +428,21 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
     width *= filter->w;
     height *= filter->h;
     */
+    /* Set image size relative to the bounding box size */
     img_scale_factor = height / (gfloat) gdk_pixbuf_get_height (pixbuf);
-    img_width = gdk_pixbuf_get_width (pixbuf) * img_scale_factor * 1.5;
-    img_height = height * 1.5;
+    img_width = gdk_pixbuf_get_width (pixbuf) * img_scale_factor;
+    img_height = height;
+
+    /* Set image coordinates relative to keypoint */
+    img_x = landmark_nose_keypoint_ptr->x -
+        sprite_info->keypoint_pixel_location.x * img_scale_factor;
+    img_y = landmark_nose_keypoint_ptr->y -
+        sprite_info->keypoint_pixel_location.y * img_scale_factor;
 
     g_print ("scale factor: %lf\n", width * img_scale_factor);
     pixbuf = gdk_pixbuf_scale_simple (pixbuf, img_width, img_height,
         GDK_INTERP_NEAREST);
-    gdk_cairo_set_source_pixbuf (cr, pixbuf, x - img_width / 2 + width / 2, y);
+    gdk_cairo_set_source_pixbuf (cr, pixbuf, img_x, img_y);
     cairo_paint (cr);
     g_object_unref (pixbuf);
   }
