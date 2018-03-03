@@ -132,6 +132,9 @@ struct _GstCheeseFaceDetect
   guint last_face_id;
   guint frame_number;
   std::map<guint, CheeseFace> *faces;
+
+  cv::Mat *camera_matrix;
+  cv::Mat *dist_coeffs;
 };
 
 struct _GstCheeseFaceDetectClass 
