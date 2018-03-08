@@ -65,6 +65,9 @@
 
 #include "gstcheesefacedetect.h"
 
+using namespace std;
+using namespace dlib;
+
 
 #define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
 #define DEFAULT_SCALE_FACTOR                              1.0
@@ -644,7 +647,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     GValue facedata_value = G_VALUE_INIT;
     GstStructure *facedata_st;
     guint id = kv.first;
-    CheeseFace face = kv.second;
+    CheeseFace &face = kv.second;
 
     cv::Mat rotation_vector;
     cv::Mat translation_vector;
@@ -828,10 +831,12 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
           }
         }
         /* end */
+        face.landmark.clear ();
         for (j = 0; j < shape.num_parts (); j++) {
+          cv::Point pt (shape.part (j).x () / filter->scale_factor,
+              shape.part (j).y () / filter->scale_factor);
+          face.landmark.push_back (pt);
           if (filter->display_landmark) {
-            cv::Point pt (shape.part (j).x () / filter->scale_factor,
-                shape.part (j).y () / filter->scale_factor);
             cv::circle(cvImg, pt, 2, cv::Scalar (0, 0, 255), CV_FILLED);
           }
           if (post_msg) {

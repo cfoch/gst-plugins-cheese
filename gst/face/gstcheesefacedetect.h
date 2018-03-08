@@ -70,12 +70,6 @@
 
 #include "Hungarian.h"
 
-
-
-using namespace std;
-using namespace dlib;
-
-
 G_BEGIN_DECLS
 
 /* #defines don't like whitespacey bits */
@@ -89,16 +83,26 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CHEESEFACEDETECT))
 #define GST_IS_CHEESEFACEDETECT_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CHEESEFACEDETECT))
+#define GST_CHEESEFACEDETECT_GET_CLASS(obj) \
+  (G_TYPE_INSTANCE_GET_CLASS((obj),GST_TYPE_CHEESEFACEDETECT,GstCheeseFaceDetectClass))
+
+#define MAX_FACIAL_KEYPOINTS      68
 
 typedef struct _GstCheeseFaceDetect      GstCheeseFaceDetect;
 typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
 
+/**
+ * I still doubt if this struct should contain objects or just C structs like
+ * graphene points and rects
+ **/
 struct CheeseFace {
   public:
     cv::Point centroid;
     dlib::rectangle bounding_box;
     dlib::rectangle scaled_bounding_box;
     guint last_detected_frame;
+
+    std::vector<cv::Point> landmark;
 
     CheeseFace ()
     {
@@ -108,6 +112,15 @@ struct CheeseFace {
     {
     }
 };
+
+/*
+struct CheeseFaceInfo {
+  graphene_point_t centroid;
+  graphene_rect_t bounding_box;
+  guint n_facial_keypoints;
+  graphene_point_t landmark[MAX_FACIAL_KEYPOINTS];
+};
+*/
 
 struct _GstCheeseFaceDetect
 {
@@ -132,6 +145,7 @@ struct _GstCheeseFaceDetect
   guint last_face_id;
   guint frame_number;
   std::map<guint, CheeseFace> *faces;
+  GHashTable *face_table;
 
   cv::Mat *camera_matrix;
   cv::Mat *dist_coeffs;
