@@ -95,6 +95,9 @@ typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
  * I still doubt if this struct should contain objects or just C structs like
  * graphene points and rects
  **/
+
+typedef void (* CheeseFaceFreeFunc) (gpointer);
+
 struct CheeseFace {
   public:
     cv::Point centroid;
@@ -104,12 +107,19 @@ struct CheeseFace {
 
     std::vector<cv::Point> landmark;
 
+    gpointer user_data;
+    CheeseFaceFreeFunc free_user_data_func;
+
     CheeseFace ()
     {
+        user_data = NULL;
+        free_user_data_func = NULL;
     }
 
     ~CheeseFace ()
     {
+        if (user_data && free_user_data_func)
+            free_user_data_func (user_data);
     }
 };
 
@@ -154,6 +164,9 @@ struct _GstCheeseFaceDetect
 struct _GstCheeseFaceDetectClass 
 {
   GstOpencvVideoFilterClass parent_class;
+
+  /* funcs */
+  CheeseFaceFreeFunc cheese_face_free_user_data_func;
 };
 
 GType gst_cheese_face_detect_get_type (void);

@@ -77,11 +77,13 @@ struct _GstCheeseFaceOmelette
 
   gboolean assets_loaded;
 
-  cv::Mat *background;
-  cv::Mat *omelette;
-  cv::Mat *omelette_oregano;
-  cv::Mat *cheeses[14];
-  cv::Mat *tomatoes[14];
+  /* cv::UMat *background; */
+  cv::UMat *omelette;
+  cv::UMat *omelette_oregano;
+  cv::UMat *cheeses[14];
+  cv::UMat *tomatoes[14];
+
+  cv::UMat *overlay;
 };
 
 struct _GstCheeseFaceOmeletteClass 

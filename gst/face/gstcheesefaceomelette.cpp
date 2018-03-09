@@ -68,19 +68,44 @@
 using namespace std;
 using namespace cv;
 
+enum OmeletteAnimationTurn {
+  OMELETTE_ANIMATION_TURN_OMELETTE,
+  OMELETTE_ANIMATION_TURN_OMELETTE_OREGANO,
+  OMELETTE_ANIMATION_TURN_TOMATO,
+  OMELETTE_ANIMATION_TURN_CHEESE
+};
+
+typedef struct _OmeletteData OmeletteData;
+typedef struct _OmeletteData {
+  guint face_id;
+  OmeletteAnimationTurn turn;
+  /* Counts frames when animation runs. If face not detected, skip. */
+  guint64 animation_frame_counter;
+  /* Counts the number of cheese added to the omelette. */
+  guint cheese_counter;
+  /* Counts the number of tomatoes added to the omelette. */
+  guint tomato_counter;
+  /* Just in case */
+  GstCheeseFaceOmelette *filter;
+  
+};
+
 
 static cv::Scalar WHITE(255, 255, 255);
 static cv::Scalar BLACK(0, 0, 0);
+
+static guint FACE_NOSE_POINT = 34;
 static guint FACE_LIPS_INTERNAL_BORDER[] =
     {49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60};
 static guint FACE_LIPS_EXTERNAL_BORDER[] = {61, 62, 63, 64, 65, 66, 67, 68};
 static guint FACE_LEFT_EYE_BORDER[] = {37, 38, 39, 40, 41, 42};
 static guint FACE_RIGHT_EYE_BORDER[] = {43, 44, 45, 46, 47, 48};
 
-/*
-#define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
-#define DEFAULT_SCALE_FACTOR                              1.0
-*/
+#define DEFAULT_FIT_FACTOR                                   1.5
+#define DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL            120
+#define DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL    30
+#define DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL              2
+#define DEFAULT_ANIMATION_CHEESE_FRAME_INTERVAL              2
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_omelette_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_omelette_debug
@@ -121,7 +146,82 @@ static void gst_cheese_face_omelette_get_property (GObject * object,
 static GstFlowReturn gst_cheese_face_omelette_transform_ip (
     GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
 
-/* GObject vmethod implementations */
+/* Omelette per face data */
+static OmeletteData * omelette_data_new (GstCheeseFaceOmelette * filter);
+static void omelette_data_free (gpointer user_data);
+
+static OmeletteData *
+omelette_data_new (guint face_id, GstCheeseFaceOmelette * filter)
+{
+  OmeletteData * data = new OmeletteData;
+  GST_DEBUG ("Face %d: Create new omelette data.", face_id);
+  data->face_id = face_id;
+  data->turn = OMELETTE_ANIMATION_TURN_OMELETTE;
+  data->animation_frame_counter = 0;
+  data->cheese_counter = 0;
+  data->tomato_counter = 0;
+  data->filter = filter;
+  return data;
+}
+
+static void
+omelette_data_free (gpointer user_data)
+{
+  OmeletteData *data = (OmeletteData *) user_data;
+  delete data;
+}
+
+static void
+omelette_data_update_turn (OmeletteData * data)
+{
+  const guint64 frame_counter = data->animation_frame_counter;
+  const guint max_tomatoes = G_N_ELEMENTS (data->filter->tomatoes);
+  const guint max_cheeses = G_N_ELEMENTS (data->filter->cheeses);
+
+  if (frame_counter == 1 + DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL) {
+    data->turn = OMELETTE_ANIMATION_TURN_OMELETTE_OREGANO;
+    GST_LOG ("Face %d: Turn changed to %s", data->face_id,
+        G_STRINGIFY (OMELETTE_ANIMATION_TURN_OMELETTE_OREGANO));
+  } else if (frame_counter == 1 + DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL +
+      DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL) {
+    data->turn = OMELETTE_ANIMATION_TURN_TOMATO;
+    GST_LOG ("Face %d: Turn changed to %s", data->face_id,
+        G_STRINGIFY (OMELETTE_ANIMATION_TURN_TOMATO));
+  } else if (frame_counter == 1 + DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL +
+      DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL +
+      DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL * max_tomatoes) {
+    data->turn = OMELETTE_ANIMATION_TURN_CHEESE;
+    GST_LOG ("Face %d: Turn changed to %s", data->face_id,
+        G_STRINGIFY (OMELETTE_ANIMATION_TURN_CHEESE));
+  }
+
+  if (data->turn == OMELETTE_ANIMATION_TURN_TOMATO) {
+    const guint64 delta = frame_counter -
+        DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL -
+        DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL -
+        DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL * data->tomato_counter;
+
+    if (delta % DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL == 1 &&
+        data->tomato_counter < max_tomatoes) {
+      data->tomato_counter++;
+      GST_LOG ("Face %d: Tomato counter set to %d", data->face_id,
+          data->tomato_counter);
+    }
+  } else if (data->turn == OMELETTE_ANIMATION_TURN_CHEESE) {
+    const guint64 delta = frame_counter -
+        DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL -
+        DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL -
+        DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL * data->tomato_counter -
+        DEFAULT_ANIMATION_CHEESE_FRAME_INTERVAL * data->cheese_counter;
+
+    if (delta % DEFAULT_ANIMATION_CHEESE_FRAME_INTERVAL == 1 &&
+        data->cheese_counter < max_cheeses) {
+      data->cheese_counter++;
+      GST_LOG ("Face %d: Cheese counter set to %d", data->face_id,
+          data->cheese_counter);
+    }
+  }
+}
 
 /* initialize the cheesefaceomelette's class */
 static void
@@ -130,6 +230,7 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
   GstOpencvVideoFilterClass *gstopencvbasefilter_class;
+  GstCheeseFaceDetectClass *gstcheesefacedetect_class;
 
   GST_DEBUG_CATEGORY_INIT (gst_cheese_face_omelette_debug,
       "gstcheesefaceomelette", 0, "Cheese Face Detect");
@@ -137,9 +238,12 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
   gstopencvbasefilter_class = (GstOpencvVideoFilterClass *) klass;
+  gstcheesefacedetect_class = (GstCheeseFaceDetectClass *) klass;
 
   gstopencvbasefilter_class->cv_trans_ip_func =
-     gst_cheese_face_omelette_transform_ip;
+      gst_cheese_face_omelette_transform_ip;
+  gstcheesefacedetect_class->cheese_face_free_user_data_func =
+      omelette_data_free;
 
   gobject_class->finalize = GST_DEBUG_FUNCPTR (gst_cheese_face_omelette_finalize);
   gobject_class->set_property = gst_cheese_face_omelette_set_property;
@@ -157,7 +261,7 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
       gst_static_pad_template_get (&sink_factory));
 }
 
-#define OMELETTE_ASSETS_DIR  "/home/cfoch/Documents/git/gst-plugins-cheese/png/omelette/"
+#define OMELETTE_ASSETS_DIR  "/home/cfoch/Documents/git/gst-plugins-cheese/png/omelette3/resized/"
 
 static void
 gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
@@ -167,34 +271,34 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
   /* Load overlay images */
   /* FIXME: This should be done in the GNOME way: gresources*/
 
-  /*
-  filter->background = new cv::Mat;
-  *filter->background = cv::imread (OMELETTE_ASSETS_DIR "background.png",
-      CV_LOAD_IMAGE_UNCHANGED);
-  */
-
-  filter->omelette = new cv::Mat;
+  filter->omelette = new cv::UMat;
   *filter->omelette = cv::imread (OMELETTE_ASSETS_DIR "omelette.png",
-      CV_LOAD_IMAGE_UNCHANGED);
+      CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);;
 
-  filter->omelette_oregano = new cv::Mat;
+
+  filter->omelette_oregano = new cv::UMat;
   *filter->omelette_oregano = cv::imread (
-      OMELETTE_ASSETS_DIR "omelette_oregano.png", CV_LOAD_IMAGE_UNCHANGED);
+      OMELETTE_ASSETS_DIR "omelette-oregano.png",
+      CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
 
   for (i = 0; i < G_N_ELEMENTS (filter->cheeses); i++) {
     gchar *filename;
-    filter->cheeses[i] = new cv::Mat;
+    filter->cheeses[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "cheese-%d.png", i + 1);
-    *filter->cheeses[i] = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
+    *filter->cheeses[i] =
+        cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
     g_free (filename);
   }
   for (i = 0; i < G_N_ELEMENTS (filter->tomatoes); i++) {
     gchar *filename;
-    filter->tomatoes[i] = new cv::Mat;
+    filter->tomatoes[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "tomato-%d.png", i + 1);
-    *filter->tomatoes[i] = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
+    *filter->tomatoes[i] =
+        cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
     g_free (filename);
   }
+
+  filter->overlay = new cv::UMat;
 }
 
 static void
@@ -222,6 +326,74 @@ gst_cheese_face_omelette_get_property (GObject * object, guint prop_id,
   }
 }
 
+static void
+gst_cheese_face_omelette_select_image (GstCheeseFaceOmelette * filter,
+    OmeletteData * omelette_data, cv::UMat & image, cv::UMat & image_mask,
+    cv::Size & image_size, float scale_factor, float fit_factor)
+{
+  scale_factor *= fit_factor;
+  /* Decide what image to show */
+  switch (omelette_data->turn) {
+    case OMELETTE_ANIMATION_TURN_OMELETTE:
+      cv::resize (*filter->omelette, image, cv::Size (), scale_factor,
+          scale_factor);
+      break;
+    case OMELETTE_ANIMATION_TURN_OMELETTE_OREGANO:
+      cv::resize (*filter->omelette_oregano, image, cv::Size (),
+          scale_factor, scale_factor);
+      break;
+    case OMELETTE_ANIMATION_TURN_TOMATO:
+      cv::resize (*filter->tomatoes[omelette_data->tomato_counter - 1],
+          image, cv::Size (), scale_factor, scale_factor);
+      break;
+    case OMELETTE_ANIMATION_TURN_CHEESE:
+      cv::resize (*filter->cheeses[omelette_data->cheese_counter - 1],
+          image, cv::Size (), scale_factor, scale_factor);
+      break;
+  }
+  image_size = image.size ();
+  /* TODO */
+  /* It is obvious that images have alpha channel but validate anyway */
+  cv::extractChannel (image, image_mask, 3);
+  cv::cvtColor(image_mask, image_mask, CV_GRAY2RGB);
+  cv::cvtColor(image, image, CV_BGR2RGB);
+}
+
+static void
+_cheese_face_create_face_polygons (CheeseFace & face,
+    std::vector<cv::Point> & face_lips_internal_pts,
+    std::vector<cv::Point> & face_left_eye_internal_pts,
+    std::vector<cv::Point> & face_right_eye_internal_pts)
+{
+  guint i;
+  for (i = 0; i < G_N_ELEMENTS (FACE_LIPS_INTERNAL_BORDER); i++)
+    face_lips_internal_pts.push_back (
+        face.landmark[FACE_LIPS_INTERNAL_BORDER[i] - 1]);
+  for (i = 0; i < G_N_ELEMENTS (FACE_LEFT_EYE_BORDER); i++)
+    face_left_eye_internal_pts.push_back (
+        face.landmark[FACE_LEFT_EYE_BORDER[i] - 1]);
+  for (i = 0; i < G_N_ELEMENTS (FACE_RIGHT_EYE_BORDER); i++)
+    face_right_eye_internal_pts.push_back (
+        face.landmark[FACE_RIGHT_EYE_BORDER[i] - 1]);
+}
+
+static void
+_draw_polygons_to_mask (cv::UMat & umask,
+    std::vector<cv::Point> & face_lips_internal_pts,
+    std::vector<cv::Point> & face_left_eye_internal_pts,
+    std::vector<cv::Point> & face_right_eye_internal_pts)
+{
+  /* Do I really have to convert it to a cv::Mat ? */
+  cv::Mat mask = umask.getMat (cv::ACCESS_WRITE);
+  cv::fillConvexPoly (mask, &face_lips_internal_pts[0],
+      face_lips_internal_pts.size (), BLACK);
+  cv::fillConvexPoly (mask, &face_left_eye_internal_pts[0],
+      face_left_eye_internal_pts.size (), BLACK);
+  cv::fillConvexPoly (mask, &face_right_eye_internal_pts[0],
+      face_right_eye_internal_pts.size (), BLACK);
+  umask = mask.getUMat (cv::ACCESS_WRITE);
+}
+
 static GstFlowReturn
 gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
@@ -232,146 +404,94 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
     GST_OPENCV_VIDEO_FILTER_CLASS (gst_cheese_face_omelette_parent_class);
   GstCheeseFaceDetect *parent_filter = GST_CHEESEFACEDETECT (base);
   GstCheeseFaceOmelette *filter = GST_CHEESEFACEOMELETTE (base);
-  cv::Mat cvImg (cv::cvarrToMat (img));
-  cv::Size sz = cvImg.size ();
 
+  if ((ret = bclass->cv_trans_ip_func (base, buf, img)) == GST_FLOW_OK) {
+    cv::Mat cvImg (cv::cvarrToMat (img));
+    cv::Size sz = cvImg.size ();
+    cv::Rect rect (cv::Point (0, 0), sz);
 
-  if ((ret = bclass->cv_trans_ip_func (base, buf, img)) != GST_FLOW_OK)
-    return ret;
+    cv::UMat mask(sz.height, sz.width, CV_8UC3, BLACK);
+    /* The image that will be masked */
+    cv::UMat mask_victim (sz.height, sz.width, CV_8UC3, BLACK);
+    /* The mask_victim with mask applied? */
+    cv::UMat masked (sz.height, sz.width, CV_8UC3, BLACK);
 
-  /*cv::Mat background_mask;
-  cv::Mat background;*/
-  cv::Mat landmark_mask(sz.height, sz.width, CV_8UC3, BLACK);
-  cv::Mat mask_victim (sz.height, sz.width, CV_8UC3, BLACK);
-  cv::Mat masked (sz.height, sz.width, CV_8UC3, BLACK);
-  cv::Mat overlay(sz.height, sz.width, CV_8UC3, BLACK);
+    //uImg = cvImg.getUMat (cv::ACCESS_WRITE);
 
-  /* Scale background to fit input frame */
-  /* TODO do this only in the first frame! */
+    for (auto &kv : *parent_filter->faces) {
+      guint id = kv.first;
+      CheeseFace &face = kv.second;
+      const gboolean animate =
+          face.last_detected_frame == parent_filter->frame_number - 1;
+      OmeletteData *omelette_data;
 
-  /*
-  cv::resize (*filter->background, *filter->background, sz, CV_INTER_CUBIC);
-  cv::extractChannel (*filter->background, background_mask, 3);
-  cv::cvtColor(background_mask, background_mask, CV_GRAY2RGB);
-  cvtColor (*filter->background, background, CV_BGR2RGB);
-
-  for (i = 0; i < sz.width; i++) {
-    for (j = 0; j < sz.height; j++) {
-      cv::Vec3b &mask_px = background_mask.at<cv::Vec3b>(j, i);
-      float alpha = float (mask_px[0]) / 255.0;
-      float inv_alpha = 1 - alpha;
-      cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
-      cv::Vec3b &mask_bg_px = background.at<cv::Vec3b>(j, i);
-      cv::Vec3b px;
-      px = cv::Vec3b (
-          mask_bg_px[0] * alpha + in_px[0] * inv_alpha,
-          mask_bg_px[1] * alpha + in_px[1] * inv_alpha,
-          mask_bg_px[2] * alpha + in_px[2] * inv_alpha);
-      cvImg.at<cv::Vec3b> (j, i) = px;
-    }
-  }
-  */
-
-  for (auto &kv : *parent_filter->faces) {
-    guint id = kv.first;
-    CheeseFace &face = kv.second;
-
-    /* The parent already incremented the frame counter */
-    if (face.last_detected_frame == parent_filter->frame_number - 1) {
-      std::vector<cv::Point> face_lips_internal_pts;
-      std::vector<cv::Point> face_left_eye_internal_pts;
-      std::vector<cv::Point> face_right_eye_internal_pts;
-      /* images */
-      cv::Mat omelette, omelette_mask;
-      cv::Size omelette_sz;
-      gfloat scale_factor;
-
-      scale_factor =
-          face.bounding_box.width () / (gfloat) filter->omelette->cols;
-
-      /*
-      cout << "cvImg.cols: " << cvImg.cols << endl;
-      cout << "cvImg.rows: " << cvImg.rows << endl;
-      cout << "bounding_box.width: " << face.bounding_box.width () << endl;
-      cout << "bounding_box.height: " << face.bounding_box.height () << endl;
-      cout << "filter->omelette->cols: " << filter->omelette->cols << endl;
-      cout << "filter->omelette->rows: " << filter->omelette->rows << endl;
-      */
-
-      // omelette_sz = cv::Size (face.bounding_box.width (),
-      //   filter->omelette->rows * scale_factor);
-      cv::resize (*filter->omelette, omelette, cv::Size (), scale_factor, 
-          scale_factor);
-
-      /* Build mask */
-      cv::extractChannel (omelette, omelette_mask, 3);
-      cv::cvtColor(omelette_mask, omelette_mask, CV_GRAY2RGB);
-
-
-      for (i = 0; i < omelette_sz.width; i++) {
-        for (j = 0; j < omelette_sz.height; j++) {
-          const guint mask_i = i + face.bounding_box.left ();
-          const guint mask_j = j + face.bounding_box.top ();
-          landmark_mask.at<cv::Vec3b> (mask_j, mask_i) =
-              omelette_mask.at<cv::Vec3b>(j, i);
-        }
+      if (animate) {
+        if (!face.user_data)
+          face.user_data = (gpointer) omelette_data_new (id, filter);
+        omelette_data = (OmeletteData *) (face.user_data);
+        omelette_data->animation_frame_counter += 1;
+        GST_DEBUG ("Face %d: Animation frame counter is %d", id,
+            omelette_data->animation_frame_counter);
+        omelette_data_update_turn (omelette_data);
       }
 
-
-      /* Draw mask for face internal lips */
-      for (i = 0; i < G_N_ELEMENTS (FACE_LIPS_INTERNAL_BORDER); i++)
-        face_lips_internal_pts.push_back (
-            face.landmark[FACE_LIPS_INTERNAL_BORDER[i] - 1]);
-      for (i = 0; i < G_N_ELEMENTS (FACE_LEFT_EYE_BORDER); i++)
-        face_left_eye_internal_pts.push_back (
-            face.landmark[FACE_LEFT_EYE_BORDER[i] - 1]);
-      for (i = 0; i < G_N_ELEMENTS (FACE_RIGHT_EYE_BORDER); i++)
-        face_right_eye_internal_pts.push_back (
-            face.landmark[FACE_RIGHT_EYE_BORDER[i] - 1]);
-
-
-      cv::fillConvexPoly(landmark_mask, &face_lips_internal_pts[0],
-          face_lips_internal_pts.size (), BLACK);
-      cv::fillConvexPoly(landmark_mask, &face_left_eye_internal_pts[0],
-          face_left_eye_internal_pts.size (), BLACK);
-      cv::fillConvexPoly(landmark_mask, &face_right_eye_internal_pts[0],
-          face_right_eye_internal_pts.size (), BLACK);
+      /* The parent already incremented the frame counter */
+      if (animate) {
+        const float scale_factor =
+            face.bounding_box.width () / (gfloat) filter->omelette->cols;
+        /* Images */
+        cv::UMat image, image_mask;
+        cv::Size image_size;
+        /* Points to build polygons */
+        std::vector<cv::Point> face_lips_internal_pts;
+        std::vector<cv::Point> face_left_eye_internal_pts;
+        std::vector<cv::Point> face_right_eye_internal_pts;
+        /* ROIs */
+        cv::Rect mask_victim_rect_ROI;
+        cv::UMat mask_victim_ROI;
+        cv::UMat mask_ROI;
+        cv::Point nose_point = face.landmark[FACE_NOSE_POINT - 1];
+        cv::Point image_offset;
 
 
-      /*
-      cvImg.copyTo (cvImg, landmark_mask);
 
-      /* Dumbness */
+        _cheese_face_create_face_polygons (face, face_lips_internal_pts,
+            face_left_eye_internal_pts, face_right_eye_internal_pts);
+        gst_cheese_face_omelette_select_image (filter, omelette_data, image,
+            image_mask, image_size, scale_factor, DEFAULT_FIT_FACTOR);
 
-      /* After masking */
-      cvtColor (omelette, omelette, CV_BGR2RGB);
-      for (i = 0; i < omelette_sz.width; i++) {
-        for (j = 0; j < omelette_sz.height; j++) {
-          const guint in_i = face.bounding_box.left ();
-          const guint in_j = face.bounding_box.top ();
-          mask_victim.at<cv::Vec3b> (in_j + j, in_i + i) =
-              omelette.at<cv::Vec3b> (j, i);
-        }
-      }
-      mask_victim.copyTo (masked, landmark_mask);
+        image_offset = cv::Point (
+            nose_point.x - image_size.width / 2,
+            nose_point.y - image_size.height / 2
+        );
+        mask_victim_rect_ROI = cv::Rect (image_offset, image_size) & rect;
+        mask_victim_ROI = mask_victim (mask_victim_rect_ROI);
+        mask_ROI = mask (mask_victim_rect_ROI);
 
+        image.copyTo (mask_victim_ROI);
+        image_mask.copyTo (mask_ROI);
 
-      /* TODO */
-      /* This is hardcoded and I also think that I am copying pixels */
-      /* unnecesarily */
-      for (i = 0; i < sz.width; i++) {
-        for (j = 0; j < sz.height; j++) {
-          cv::Vec3b &mask_px = landmark_mask.at<cv::Vec3b>(j, i);
-          float alpha = mask_px[0] / 255.0;
-          float inv_alpha = 1 - alpha;
-          cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
-          cv::Vec3b &mask_victim_px = mask_victim.at<cv::Vec3b>(j, i);
-          cvImg.at<cv::Vec3b> (j, i) = cv::Vec3b (
-              mask_victim_px[0] * alpha + in_px[0] * inv_alpha,
-              mask_victim_px[1] * alpha + in_px[1] * inv_alpha,
-              mask_victim_px[2] * alpha + in_px[2] * inv_alpha
-          );
+        _draw_polygons_to_mask (mask, face_lips_internal_pts,
+            face_left_eye_internal_pts, face_right_eye_internal_pts);
 
+        /* Dumbness */
+        cv::Mat tmp_img = mask_victim.getMat (cv::ACCESS_READ);
+        cv::Mat tmp_mask = mask.getMat (cv::ACCESS_READ);
+
+        for (i = 0; i < sz.width; i++) {
+          for (j = 0; j < sz.height; j++) {
+            cv::Vec3b &mask_px = tmp_mask.at<cv::Vec3b>(j, i);
+            float alpha = mask_px[0] / 255.0;
+            float inv_alpha = 1 - alpha;
+            cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
+            cv::Vec3b &mask_victim_px = tmp_img.at<cv::Vec3b>(j, i);
+            cvImg.at<cv::Vec3b> (j, i) = cv::Vec3b (
+                mask_victim_px[0] * alpha + in_px[0] * inv_alpha,
+                mask_victim_px[1] * alpha + in_px[1] * inv_alpha,
+                mask_victim_px[2] * alpha + in_px[2] * inv_alpha
+            );
+
+          }
         }
       }
     }
@@ -385,18 +505,16 @@ gst_cheese_face_omelette_finalize (GObject * obj)
 {
   guint i;
   GstCheeseFaceOmelette *filter = GST_CHEESEFACEOMELETTE (obj);
-  /*
-  if (filter->background)
-    delete filter->background;
-  */
   if (filter->omelette)
     delete filter->omelette;
   if (filter->omelette_oregano);
     delete filter->omelette_oregano;
   for (i = 0; i < G_N_ELEMENTS (filter->cheeses); i++)
-    delete filter->cheeses[i];
+    if (filter->cheeses[i])
+      delete filter->cheeses[i];
   for (i = 0; i < G_N_ELEMENTS (filter->tomatoes); i++)
-    delete filter->tomatoes[i];
+    if (filter->tomatoes[i])
+      delete filter->tomatoes[i];
 
   G_OBJECT_CLASS (gst_cheese_face_omelette_parent_class)->finalize (obj);
 }

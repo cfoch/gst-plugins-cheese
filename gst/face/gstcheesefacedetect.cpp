@@ -140,6 +140,8 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
   GST_DEBUG_CATEGORY_INIT (gst_cheese_face_detect_debug, "gstcheesefacedetect",
       0, "Cheese Face Detect");
 
+  klass->cheese_face_free_user_data_func = NULL;
+
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
   gstopencvbasefilter_class = (GstOpencvVideoFilterClass *) klass;
@@ -425,6 +427,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   GValue faces_values = G_VALUE_INIT;
   GstMessage *msg;
   GstCheeseFaceDetect *filter = GST_CHEESEFACEDETECT (base);
+  GstCheeseFaceDetectClass *klass = GST_CHEESEFACEDETECT_GET_CLASS (filter);
   /* TODO */
   /* Handle more cases for posting messages like gstfacedetect. */
   gboolean post_msg = TRUE;
@@ -512,10 +515,18 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   /* Init faces */
   if (filter->faces->empty ()) {
     for (i = 0; i < dets.size(); i++) {
+      /**
+       * FIXME (Ineficient code)
+       * When we declare a new CheeseFace in this way we actually create a
+       * copy and this copy is obviously destructed after the end of this
+       * block/scope. A solution may be to use a constructor but I am not
+       * sure yet if CheeseFace should be a struct, a C++ class, a GObject...
+       **/
       CheeseFace face_info;
       face_info.last_detected_frame = filter->frame_number;
       face_info.bounding_box = dets[i];
       face_info.centroid = calculate_centroid(dets[i]);
+      face_info.free_user_data_func = klass->cheese_face_free_user_data_func;
       (*filter->faces)[++filter->last_face_id] = face_info;
     };
   }
@@ -525,7 +536,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     for (auto &kv : *filter->faces) {
       guint delta_since_detected;
       guint id = kv.first;
-      CheeseFace face = kv.second;
+      CheeseFace &face = kv.second;
 
       delta_since_detected = filter->frame_number - face.last_detected_frame;
       GST_LOG ("Face %d: number of frames passed since last detection of "
@@ -611,11 +622,18 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     for (i = 0; i < dets.size (); i++) {
       if (!(std::find (assignment.begin(), assignment.end (), i) !=
           assignment.end ())) {
+        /**
+         * FIXME
+         * When we declare a new CheeseFace in this way we actually create a
+         * copy and this copy is obviously destructed after the end of this
+         * block/scope. Avoid doing copies!
+         **/
         CheeseFace face_info;
         face_info.last_detected_frame = filter->frame_number;
         face_info.bounding_box = dets[i];
         face_info.centroid = calculate_centroid(dets[i]);
         (*filter->faces)[++filter->last_face_id] = face_info;
+        face_info.free_user_data_func = klass->cheese_face_free_user_data_func;
         GST_LOG ("Face %d has been created.", filter->last_face_id);
       }
     }
