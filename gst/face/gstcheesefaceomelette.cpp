@@ -415,8 +415,8 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
     cv::UMat mask_victim (sz.height, sz.width, CV_8UC3, BLACK);
     /* The mask_victim with mask applied? */
     cv::UMat masked (sz.height, sz.width, CV_8UC3, BLACK);
-
     //uImg = cvImg.getUMat (cv::ACCESS_WRITE);
+
 
     for (auto &kv : *parent_filter->faces) {
       guint id = kv.first;
@@ -453,8 +453,6 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
         cv::Point nose_point = face.landmark[FACE_NOSE_POINT - 1];
         cv::Point image_offset;
 
-
-
         _cheese_face_create_face_polygons (face, face_lips_internal_pts,
             face_left_eye_internal_pts, face_right_eye_internal_pts);
         gst_cheese_face_omelette_select_image (filter, omelette_data, image,
@@ -473,30 +471,27 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
 
         _draw_polygons_to_mask (mask, face_lips_internal_pts,
             face_left_eye_internal_pts, face_right_eye_internal_pts);
+      }
+    }
+    /* Dumbness */
+    cv::Mat tmp_img = mask_victim.getMat (cv::ACCESS_READ);
+    cv::Mat tmp_mask = mask.getMat (cv::ACCESS_READ);
 
-        /* Dumbness */
-        cv::Mat tmp_img = mask_victim.getMat (cv::ACCESS_READ);
-        cv::Mat tmp_mask = mask.getMat (cv::ACCESS_READ);
-
-        for (i = 0; i < sz.width; i++) {
-          for (j = 0; j < sz.height; j++) {
-            cv::Vec3b &mask_px = tmp_mask.at<cv::Vec3b>(j, i);
-            float alpha = mask_px[0] / 255.0;
-            float inv_alpha = 1 - alpha;
-            cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
-            cv::Vec3b &mask_victim_px = tmp_img.at<cv::Vec3b>(j, i);
-            cvImg.at<cv::Vec3b> (j, i) = cv::Vec3b (
-                mask_victim_px[0] * alpha + in_px[0] * inv_alpha,
-                mask_victim_px[1] * alpha + in_px[1] * inv_alpha,
-                mask_victim_px[2] * alpha + in_px[2] * inv_alpha
-            );
-
-          }
-        }
+    for (i = 0; i < sz.width; i++) {
+      for (j = 0; j < sz.height; j++) {
+        cv::Vec3b &mask_px = tmp_mask.at<cv::Vec3b>(j, i);
+        float alpha = mask_px[0] / 255.0;
+        float inv_alpha = 1 - alpha;
+        cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
+        cv::Vec3b &mask_victim_px = tmp_img.at<cv::Vec3b>(j, i);
+        cvImg.at<cv::Vec3b> (j, i) = cv::Vec3b (
+            mask_victim_px[0] * alpha + in_px[0] * inv_alpha,
+            mask_victim_px[1] * alpha + in_px[1] * inv_alpha,
+            mask_victim_px[2] * alpha + in_px[2] * inv_alpha
+        );
       }
     }
   }
-
   return ret;
 }
 
