@@ -16,6 +16,7 @@ endif
 plugins_install_dir = '@0@/gstreamer-1.0'.format(get_option('libdir'))
 
 prefix = get_option('prefix')
+datadir = join_paths(prefix, get_option('datadir'))
 
 cxx = meson.get_compiler('cpp')
 cdata = configuration_data()
@@ -24,6 +25,7 @@ cdata.set('GST_PACKAGE_ORIGIN', '"c"')
 cdata.set('GST_PACKAGE_NAME', '"Gstreamer Plugins Cheese"')
 cdata.set('PACKAGE', '"gst-plugins-cheese"')
 cdata.set('VERSION', '"@0@"'.format(gst_version))
+cdata.set_quoted('GST_PLUGINS_CHEESE_DATADIR', datadir)
 configure_file(output : 'config.h', configuration : cdata)
 
 gst_plugins_bad_args = ['-DHAVE_CONFIG_H']

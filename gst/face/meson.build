@@ -1,4 +1,3 @@
-message('In Cheese face directory')
 face_sources = [
   'gstcheesefacedetect.cpp',
   'gstcheesefaceomelette.cpp',
@@ -48,6 +47,11 @@ if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
   face_args += ['-DGDK_PIXBUF_PREFIX="' + gdk_pixbuf_prefix + '"']
   face_args += ['-DGIO_PREFIX="' + gio_prefix + '"']
 
+  if host_machine.cpu_family().startswith('x86')
+    face_args += '-DUSE_SSE41'
+  endif
+
+  install_subdir('data/pixmaps/omelette', install_dir : join_paths(datadir, 'pixmaps/gst/cheese/face/'))
   gstface = library('gstcheesefaceeffects',
     face_sources,
     cpp_args : gst_plugins_bad_args + face_args + [ '-DGST_USE_UNSTABLE_API' ],

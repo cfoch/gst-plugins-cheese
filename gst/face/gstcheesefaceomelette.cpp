@@ -1,5 +1,10 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
+ * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
+ * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
+ * Copyright (C) 2008 Michael Sheldon <mike@mikeasoft.com>
+ * Copyright (C) 2011 Stefan Sauer <ensonic@users.sf.net>
+ * Copyright (C) 2014 Robert Jobbagy <jobbagy.robert@gmail.com>
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -95,7 +100,6 @@ typedef struct _OmeletteData {
   
 };
 
-
 static cv::Scalar WHITE(255, 255, 255);
 static cv::Scalar BLACK(0, 0, 0);
 
@@ -106,6 +110,7 @@ static guint FACE_LIPS_EXTERNAL_BORDER[] = {61, 62, 63, 64, 65, 66, 67, 68};
 static guint FACE_LEFT_EYE_BORDER[] = {37, 38, 39, 40, 41, 42};
 static guint FACE_RIGHT_EYE_BORDER[] = {43, 44, 45, 46, 47, 48};
 
+#define OMELETTE_ASSETS_DIR       GST_PLUGINS_CHEESE_DATADIR "/pixmaps/gst/cheese/face/omelette/"
 #define DEFAULT_FIT_FACTOR                                   1.5
 /* FIXME: If intervals are 1 there is a segmentation fault. */
 #define DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL            120
@@ -267,43 +272,68 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
       gst_static_pad_template_get (&sink_factory));
 }
 
-/* TODO: Use GResources */
-#define OMELETTE_ASSETS_DIR  "/home/cfoch/Documents/git/gst-plugins-cheese/png/omelette3/resized/"
-
 static void
 gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
 {
+  cv::Mat img;
   guint i;
 
+  filter->omelette = NULL;
+  filter->omelette_oregano = NULL;
+  /* TODO: Use memcpy? */
+  for (i = 0; i < G_N_ELEMENTS (filter->cheeses); i++)
+    filter->cheeses[i] = NULL;
+  for (i = 0; i < G_N_ELEMENTS (filter->tomatoes); i++)
+    filter->tomatoes[i] = NULL;
+
   /* Load overlay images */
+  GST_LOG ("Loading image file '%s'.", OMELETTE_ASSETS_DIR "omelette.png");
   filter->omelette = new cv::UMat;
-  *filter->omelette = cv::imread (OMELETTE_ASSETS_DIR "omelette.png",
-      CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);;
+  img = cv::imread (OMELETTE_ASSETS_DIR "omelette.png",
+      CV_LOAD_IMAGE_UNCHANGED);
+  if (!img.data)
+    goto load_resources_error;
+  *filter->omelette = img.getUMat(cv::ACCESS_READ);
 
-
+  GST_LOG ("Loading image file '%s'.",
+      OMELETTE_ASSETS_DIR "omelette-oregano.png");
+  img = cv::imread (OMELETTE_ASSETS_DIR "omelette-oregano.png",
+      CV_LOAD_IMAGE_UNCHANGED);
   filter->omelette_oregano = new cv::UMat;
-  *filter->omelette_oregano = cv::imread (
-      OMELETTE_ASSETS_DIR "omelette-oregano.png",
-      CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
+  if (!img.data)
+    goto load_resources_error;
+  *filter->omelette_oregano = img.getUMat(cv::ACCESS_READ);
 
   for (i = 0; i < G_N_ELEMENTS (filter->cheeses); i++) {
     gchar *filename;
     filter->cheeses[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "cheese-%d.png", i + 1);
-    *filter->cheeses[i] =
-        cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
+    GST_LOG ("Loading image file '%s'.", filename);
+    img = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
     g_free (filename);
+    if (!img.data)
+      goto load_resources_error;
+    *filter->cheeses[i] = img.getUMat(cv::ACCESS_READ);
   }
+
   for (i = 0; i < G_N_ELEMENTS (filter->tomatoes); i++) {
     gchar *filename;
     filter->tomatoes[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "tomato-%d.png", i + 1);
-    *filter->tomatoes[i] =
-        cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);
+    GST_LOG ("Loading image file '%s'.", filename);
+    img = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
     g_free (filename);
+    if (!img.data)
+      goto load_resources_error;
+    *filter->tomatoes[i] = img.getUMat(cv::ACCESS_READ);
   }
+  filter->resources_loaded = TRUE;
+  return;
 
-  filter->overlay = new cv::UMat;
+load_resources_error:
+  GST_ERROR ("Unable to load the image file.");
+  filter->resources_loaded = FALSE;
+  return;
 }
 
 static void
@@ -405,13 +435,18 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
 {
   guint i, j;
   const gboolean debug = gst_debug_is_active ();
-  GstFlowReturn ret;
+  GstFlowReturn ret = GST_FLOW_ERROR;
   GstOpencvVideoFilterClass *bclass =
     GST_OPENCV_VIDEO_FILTER_CLASS (gst_cheese_face_omelette_parent_class);
   GstCheeseFaceDetect *parent_filter = GST_CHEESEFACEDETECT (base);
   GstCheeseFaceOmelette *filter = GST_CHEESEFACEOMELETTE (base);
 
-  if ((ret = bclass->cv_trans_ip_func (base, buf, img)) == GST_FLOW_OK) {
+  if (filter->resources_loaded)
+    ret = bclass->cv_trans_ip_func (base, buf, img);
+  else
+    GST_DEBUG ("Resources were not loaded.");
+
+  if (ret == GST_FLOW_OK) {
     cv::Mat cvImg (cv::cvarrToMat (img));
     cv::Size sz = cvImg.size ();
     cv::Rect rect (cv::Point (0, 0), sz);
@@ -579,6 +614,5 @@ gst_cheese_face_omelette_finalize (GObject * obj)
   for (i = 0; i < G_N_ELEMENTS (filter->tomatoes); i++)
     if (filter->tomatoes[i])
       delete filter->tomatoes[i];
-
   G_OBJECT_CLASS (gst_cheese_face_omelette_parent_class)->finalize (obj);
 }
