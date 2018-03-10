@@ -282,8 +282,14 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
       filter->shape_predictor = new dlib::shape_predictor;
-      /* TODO: Handle error. For example, file does not exist. */
-      dlib::deserialize (filter->landmark) >> *filter->shape_predictor;
+      try {
+        dlib::deserialize (filter->landmark) >> *filter->shape_predictor;
+      } catch (dlib::serialization_error &e) {
+        GST_ERROR ("Error when deserializing landmark predictor model: %s",
+            e.info.c_str());
+        delete filter->shape_predictor;
+        filter->shape_predictor = NULL;
+      }
       break;
     case PROP_USE_HUNGARIAN:
       filter->use_hungarian = g_value_get_boolean (value);
@@ -665,7 +671,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     time_pose_estimation = 0;
     time_landmark = 0;
   }
-  guint text_i = 0;
+
   for (auto &kv : *filter->faces) {
     GValue facedata_value = G_VALUE_INIT;
     GstStructure *facedata_st;
@@ -824,25 +830,10 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
                 (float) measured_eulers.at<double> (2));
 
             /* TODO */
-            /* DEBUG Rotation matrix */
+            /* LOG Rotation matrix */
             GST_LOG ("Face %d: euler angles are (%.4f, %.4f, %.4f).", id,
                 rotation_graphene_vector.x, rotation_graphene_vector.y,
                 rotation_graphene_vector.z);
-
-            cv::putText (cvImg,
-                g_strdup_printf ("x: %lf", rotation_graphene_vector.x),
-                cv::Point (10, (text_i + 1) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                cv::Scalar (0, 255, 0));
-            cv::putText (cvImg,
-                g_strdup_printf ("y: %lf", rotation_graphene_vector.y),
-                cv::Point (10, (text_i + 2) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                cv::Scalar (0, 255, 0));
-            cv::putText (cvImg,
-                g_strdup_printf ("z: %lf", rotation_graphene_vector.z),
-                cv::Point (10, (text_i + 3) * 20), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                cv::Scalar (0, 255, 0));
-
-            text_i += 3;
             g_value_set_boxed (&rotation_value, &rotation_graphene_vector);
             gst_structure_set_value (facedata_st, "pose-rotation-vector",
                 &rotation_value);
@@ -923,6 +914,8 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   if (debug)
     time_total = cv::getTickCount () - time_total;
 
+  /* I was using this to check what may origin bottlenecks, but maybe there */
+  /* are better tools for this like profiling tools, for example: perf. */
   if (time_scale_down != -1)
     GST_DEBUG ("Time to scale down frame: %.2f ms.",
         ((double) time_scale_down * 1000) / cv::getTickFrequency());

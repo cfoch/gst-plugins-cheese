@@ -67,10 +67,8 @@
 #include <dlib/image_processing/render_face_detections.h>
 #include <dlib/image_processing.h>
 
-#include <chrono>
 #include <string>
 #include <map>
-
 #include <math.h>
 
 #include "Hungarian.h"
