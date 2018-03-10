@@ -1,0 +1,3 @@
+[submodule "hungarian-algorithm-cpp"]
+	path = hungarian-algorithm-cpp
+	url = https://github.com/mcximing/hungarian-algorithm-cpp

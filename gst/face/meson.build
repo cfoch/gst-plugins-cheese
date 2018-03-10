@@ -1,13 +1,9 @@
+hungariandir = join_paths(meson.source_root(), 'hungarian-algorithm-cpp')
 face_sources = [
   'gstcheesefacedetect.cpp',
   'gstcheesefaceomelette.cpp',
   'gstcheesefaceeffects.cpp',
-  'Hungarian.cpp'
-]
-
-face_headers = [
-  'gstcheesefacedetect.h',
-  'Hungarian.h'
+  join_paths(hungariandir, 'Hungarian.cpp')
 ]
 
 opencv_dep = dependency('opencv', version : ['>= 2.3.0', '< 3.5.0'],
@@ -31,7 +27,7 @@ if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
     face_sources,
     cpp_args : gst_plugins_bad_args + face_args,
     link_args : ['-lgstopencv-1.0', '-lgslcblas'],
-    include_directories : [configinc],
+    include_directories : [configinc, hungarianinc],
     dependencies : [gstbase_dep, gstvideo_dep, opencv_dep, dlib_dep,
                     graphene_dep, graphene_gobject_dep],
     install : true,

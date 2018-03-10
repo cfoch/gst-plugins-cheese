@@ -30,6 +30,7 @@ configure_file(output : 'config.h', configuration : cdata)
 
 gst_plugins_bad_args = ['-DHAVE_CONFIG_H']
 configinc = include_directories('.')
+hungarianinc = include_directories('hungarian-algorithm-cpp')
 
 
 
