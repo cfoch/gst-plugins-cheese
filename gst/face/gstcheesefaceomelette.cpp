@@ -275,8 +275,13 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
 static void
 gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
 {
+  GstCheeseFaceDetect *parent_filter = GST_CHEESEFACEDETECT (filter);
   cv::Mat img;
   guint i;
+
+  g_object_set (G_OBJECT (parent_filter), "use-hungarian", TRUE,
+      "display-bounding-box", FALSE, "display-id", FALSE,
+      "display-landmark", FALSE, "display-pose-estimation", FALSE, NULL);
 
   filter->omelette = NULL;
   filter->omelette_oregano = NULL;
