@@ -441,10 +441,8 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
   GstCheeseFaceDetect *parent_filter = GST_CHEESEFACEDETECT (base);
   GstCheeseFaceOmelette *filter = GST_CHEESEFACEOMELETTE (base);
 
-  if (filter->resources_loaded)
+  if (filter->resources_loaded && parent_filter->shape_predictor)
     ret = bclass->cv_trans_ip_func (base, buf, img);
-  else
-    GST_DEBUG ("Resources were not loaded.");
 
   if (ret == GST_FLOW_OK) {
     cv::Mat cvImg (cv::cvarrToMat (img));
@@ -475,6 +473,12 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
       const gboolean animate =
           face.last_detected_frame == parent_filter->frame_number - 1;
       OmeletteData *omelette_data;
+
+      if (face.landmark.size () != 68) {
+        GST_DEBUG ("Face %d: Landmark is not a 68-facial keypoints model.", id);
+        continue;
+      }
+
       /**
        * FIXME
        * If two or more detected faces are very close then the bounding box
@@ -483,7 +487,6 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
        * This isn't critical but it gives a bad effect. Also, if one image is
        * should be overlayed out of the bounds of the frames it won't be drawn.
        */
-
       if (debug)
         time_per_face_start = cv::getTickCount ();;
       if (animate) {
