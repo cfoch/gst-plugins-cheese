@@ -1,23 +1,30 @@
+import argparse
+import gi
 import os
 
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gst', '1.0')
 from gi.repository import Gtk
 from gi.repository import Gst
 from gi.repository import GObject
 
-from IPython import embed
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--video-file",
+    help="The path to the video file", required=True)
+parser.add_argument("-l", "--landmark-file",
+    help="The path to the shape predictor model", required=True)
+args = parser.parse_args()
 STEPPER_DIR = os.path.dirname(os.path.realpath(__file__))
-
-SHAPE_MODEL = "/home/cfoch/Documents/git/gst-plugins-cheese/shape_predictor_68_face_landmarks.dat"
-
-PEOPLE1_PATH = "/home/cfoch/Videos/paolo.ogv"
-PEOPLE2_PATH = "/home/cfoch/Videos/people2.ogv"
 
 
 class Player(Gtk.Window):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, video_filepath, landmark_filepath, *args, **kwargs):
         Gtk.Window.__init__(self, Gtk.WindowType.TOPLEVEL, *args, **kwargs)
         self.set_default_size(800, 600)
+
+        self.video_filepath = video_filepath
+        self.landmark_filepath = landmark_filepath
 
         gtksettings = Gtk.Settings.get_default()
         gtksettings.set_property("gtk-application-prefer-dark-theme", True)
@@ -48,7 +55,7 @@ class Player(Gtk.Window):
 
     def create_pipeline(self):
         spipeline = "filesrc name=source ! decodebin ! videoconvert ! "\
-                    "cheesefaceoverlay name=face_detect ! "\
+                    "cheesefacedetect name=face_detect ! "\
                     "videoconvert ! gtksink name=sink"
 
         self.pipeline = Gst.parse_launch(spipeline)
@@ -56,9 +63,14 @@ class Player(Gtk.Window):
         self.facedetect = self.pipeline.get_by_name("face_detect")
         self.sink = self.pipeline.get_by_name("sink")
 
-        self.source.set_property("location", PEOPLE1_PATH)
-        self.facedetect.set_property("location",
-            "/home/cfoch/Documents/git/gst-plugins-cheese/blender/anonymous-xyz/anonymous.sprite")
+        self.source.set_property("location", self.video_filepath)
+        self.facedetect.set_property("display-bounding-box", True)
+        self.facedetect.set_property("display-id", True)
+        self.facedetect.set_property("display-landmark", True)
+        self.facedetect.set_property("landmark", self.landmark_filepath)
+        self.facedetect.set_property("use-hungarian", True)
+        self.facedetect.set_property("hungarian-delete-threshold", 72)
+        self.facedetect.set_property("scale-factor", 0.8)
 
         # GObject.timeout_add(300, self._duration_querier, self.pipeline)
 
@@ -107,12 +119,7 @@ class Player(Gtk.Window):
         sinkpad = converter.get_static_pad("sink")
         pad.link(sinkpad)
 
-
-
-
 Gst.init(None)
-
-player = Player()
+player = Player(args.video_file, args.landmark_file)
 player.show_all()
-
 Gtk.main()
