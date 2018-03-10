@@ -1,5 +1,10 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
+ * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
+ * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
+ * Copyright (C) 2008 Michael Sheldon <mike@mikeasoft.com>
+ * Copyright (C) 2011 Stefan Sauer <ensonic@users.sf.net>
+ * Copyright (C) 2014 Robert Jobbagy <jobbagy.robert@gmail.com>
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
