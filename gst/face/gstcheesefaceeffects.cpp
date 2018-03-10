@@ -49,7 +49,6 @@
 
 #include "gstcheesefacedetect.h"
 #include "gstcheesefaceomelette.h"
-#include "gstcheesefaceoverlay.h"
 
 
 /* entry point to initialize the plug-in
@@ -65,8 +64,6 @@ cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
    */
   gst_element_register (cheesefaceeffects, "cheesefacedetect",
       GST_RANK_NONE, gst_cheese_face_detect_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceoverlay",
-      GST_RANK_NONE, gst_cheese_face_overlay_get_type ());
   gst_element_register (cheesefaceeffects, "cheesefaceomelette",
       GST_RANK_NONE, gst_cheese_face_omelette_get_type ());
 
