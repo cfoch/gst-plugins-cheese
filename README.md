@@ -51,7 +51,7 @@ gst-launch-1.0 v4l2src ! videoconvert ! cheesefaceomelette scale-factor=0.3 land
 #### Stepper
 A tool that may help you to see what happens frame by frame.
 
-![alt text](docs/img/stepper.gif "cheesefacedetect preview")
+![alt text](docs/img/stepper.png "cheesefacedetect preview")
 
 ```
 python3 stepper.py -v people.ogv -l shape_predictor_68_face_landmarks.dat
