@@ -49,7 +49,12 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch -v -m fakesrc ! cheesefaceomelette ! fakesink silent=TRUE
+ * gst-launch-1.0 v4l2src ! videoconvert ! \
+ *   cheesefaceomelette scale-factor=0.5 display-landmark=false \
+ *   display-pose-estimation=false display-bounding-box=false display-id=false \
+ *   landmark=../shape_predictor_68_face_landmarks.dat display-landmark=false \
+ *   hungarian-delete-threshold=75 ! \
+ *   videoconvert ! xvimagesink
  * ]|
  * </refsect2>
  */
@@ -102,6 +107,7 @@ static guint FACE_LEFT_EYE_BORDER[] = {37, 38, 39, 40, 41, 42};
 static guint FACE_RIGHT_EYE_BORDER[] = {43, 44, 45, 46, 47, 48};
 
 #define DEFAULT_FIT_FACTOR                                   1.5
+/* FIXME: If intervals are 1 there is a segmentation fault. */
 #define DEFAULT_ANIMATION_OMELETTE_FRAME_INTERVAL            120
 #define DEFAULT_ANIMATION_OMELETTE_OREGANO_FRAME_INTERVAL    30
 #define DEFAULT_ANIMATION_TOMATO_FRAME_INTERVAL              2
@@ -261,6 +267,7 @@ gst_cheese_face_omelette_class_init (GstCheeseFaceOmeletteClass * klass)
       gst_static_pad_template_get (&sink_factory));
 }
 
+/* TODO: Use GResources */
 #define OMELETTE_ASSETS_DIR  "/home/cfoch/Documents/git/gst-plugins-cheese/png/omelette3/resized/"
 
 static void
@@ -269,8 +276,6 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
   guint i;
 
   /* Load overlay images */
-  /* FIXME: This should be done in the GNOME way: gresources*/
-
   filter->omelette = new cv::UMat;
   *filter->omelette = cv::imread (OMELETTE_ASSETS_DIR "omelette.png",
       CV_LOAD_IMAGE_UNCHANGED).getUMat(cv::ACCESS_READ);;
@@ -399,6 +404,7 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
 {
   guint i, j;
+  const gboolean debug = gst_debug_is_active ();
   GstFlowReturn ret;
   GstOpencvVideoFilterClass *bclass =
     GST_OPENCV_VIDEO_FILTER_CLASS (gst_cheese_face_omelette_parent_class);
@@ -409,13 +415,23 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
     cv::Mat cvImg (cv::cvarrToMat (img));
     cv::Size sz = cvImg.size ();
     cv::Rect rect (cv::Point (0, 0), sz);
+    /* Dumbness */
+    gint64 time_start;
+    gint64 time_animation_counter = 0, time_copy_frame = 0, time_polygons = 0;
+    gint64 time_select_image = 0, time_draw_polygons = 0;
+    gint64 time_create_black_frame = 0;
+    gint64 time_per_face_start = 0, time_per_face = 0;
 
+    if (debug)
+      time_start = cv::getTickCount ();
     cv::UMat mask(sz.height, sz.width, CV_8UC3, BLACK);
     /* The image that will be masked */
     cv::UMat mask_victim (sz.height, sz.width, CV_8UC3, BLACK);
     /* The mask_victim with mask applied? */
     cv::UMat masked (sz.height, sz.width, CV_8UC3, BLACK);
     //uImg = cvImg.getUMat (cv::ACCESS_WRITE);
+    if (debug)
+      time_create_black_frame = cv::getTickCount () - time_start;
 
 
     for (auto &kv : *parent_filter->faces) {
@@ -424,8 +440,20 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
       const gboolean animate =
           face.last_detected_frame == parent_filter->frame_number - 1;
       OmeletteData *omelette_data;
+      /**
+       * FIXME
+       * If two or more detected faces are very close then the bounding box
+       * of one of the images clouds the other image. What should be done
+       * is to blend all the overlay images, or at least that is what I think.
+       * This isn't critical but it gives a bad effect. Also, if one image is
+       * should be overlayed out of the bounds of the frames it won't be drawn.
+       */
 
+      if (debug)
+        time_per_face_start = cv::getTickCount ();;
       if (animate) {
+        if (debug)
+          time_start = cv::getTickCount ();
         if (!face.user_data)
           face.user_data = (gpointer) omelette_data_new (id, filter);
         omelette_data = (OmeletteData *) (face.user_data);
@@ -433,6 +461,8 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
         GST_DEBUG ("Face %d: Animation frame counter is %d", id,
             omelette_data->animation_frame_counter);
         omelette_data_update_turn (omelette_data);
+        if (debug)
+          time_animation_counter += cv::getTickCount () - time_start;
       }
 
       /* The parent already incremented the frame counter */
@@ -453,10 +483,19 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
         cv::Point nose_point = face.landmark[FACE_NOSE_POINT - 1];
         cv::Point image_offset;
 
+        if (debug)
+          time_start = cv::getTickCount ();
         _cheese_face_create_face_polygons (face, face_lips_internal_pts,
             face_left_eye_internal_pts, face_right_eye_internal_pts);
+        if (debug)
+          time_polygons += cv::getTickCount () - time_start;
+
+        if (debug)
+          time_start = cv::getTickCount ();
         gst_cheese_face_omelette_select_image (filter, omelette_data, image,
             image_mask, image_size, scale_factor, DEFAULT_FIT_FACTOR);
+        if (debug)
+          time_select_image += cv::getTickCount () - time_start;
 
         image_offset = cv::Point (
             nose_point.x - image_size.width / 2,
@@ -469,27 +508,57 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
         image.copyTo (mask_victim_ROI);
         image_mask.copyTo (mask_ROI);
 
+        if (debug)
+          time_start = cv::getTickCount ();
         _draw_polygons_to_mask (mask, face_lips_internal_pts,
             face_left_eye_internal_pts, face_right_eye_internal_pts);
+        if (debug)
+          time_draw_polygons += cv::getTickCount () - time_start;
       }
-    }
-    /* Dumbness */
-    cv::Mat tmp_img = mask_victim.getMat (cv::ACCESS_READ);
-    cv::Mat tmp_mask = mask.getMat (cv::ACCESS_READ);
 
-    for (i = 0; i < sz.width; i++) {
-      for (j = 0; j < sz.height; j++) {
-        cv::Vec3b &mask_px = tmp_mask.at<cv::Vec3b>(j, i);
-        float alpha = mask_px[0] / 255.0;
-        float inv_alpha = 1 - alpha;
-        cv::Vec3b &in_px = cvImg.at<cv::Vec3b> (j, i);
-        cv::Vec3b &mask_victim_px = tmp_img.at<cv::Vec3b>(j, i);
-        cvImg.at<cv::Vec3b> (j, i) = cv::Vec3b (
-            mask_victim_px[0] * alpha + in_px[0] * inv_alpha,
-            mask_victim_px[1] * alpha + in_px[1] * inv_alpha,
-            mask_victim_px[2] * alpha + in_px[2] * inv_alpha
-        );
-      }
+      if (debug)
+        time_per_face = cv::getTickCount () - time_per_face_start;
+      GST_DEBUG ("Face %d: time to prepare images: %.2f ms.",
+          ((double) time_per_face * 1000) / cv::getTickFrequency ());
+    }
+
+    if (parent_filter->faces->size () > 0) {
+      /* Dumbness */
+      if (debug)
+        time_start = cv::getTickCount ();
+
+      cv::UMat result;
+      mask_victim.convertTo (mask_victim, CV_32FC3);
+      /* Set mask pixel channels values between 0.0 and 1.0 */
+      mask.convertTo(mask, CV_32FC3, 1.0 / 255);
+      cvImg.convertTo (result, CV_32FC3);
+
+      /* Weight foreground */
+      cv::multiply (mask, mask_victim, mask_victim);
+      /* Invert the mask */
+      cv::subtract (cv::Scalar::all(1.0), mask, mask);
+      /* Weight background */
+      cv::multiply (mask, result, result);
+      /* Blend foreground and background */
+      cv::add(mask_victim, result, result);
+
+      result.convertTo (result, CV_8UC3);
+      result.copyTo (cvImg);
+      if (debug)
+        time_copy_frame += cv::getTickCount () - time_start;
+
+      GST_DEBUG ("Time to create black frame: %.2f ms.",
+          ((double) time_create_black_frame * 1000) / cv::getTickFrequency ());
+      GST_DEBUG ("Time to update animation counter: %.2f ms.",
+          ((double) time_animation_counter * 1000) / cv::getTickFrequency ());
+      GST_DEBUG ("Time to select image: %.2f ms.",
+          ((double) time_select_image * 1000) / cv::getTickFrequency ());
+      GST_DEBUG ("Time to create polygons: %.2f ms.",
+          ((double) time_polygons * 1000) / cv::getTickFrequency ());
+      GST_DEBUG ("Time to draw polygons: %.2f ms.",
+          ((double) time_draw_polygons * 1000) / cv::getTickFrequency ());
+      GST_DEBUG ("Time to copy frame: %.2f ms.",
+          ((double) time_copy_frame * 1000) / cv::getTickFrequency ());
     }
   }
   return ret;
