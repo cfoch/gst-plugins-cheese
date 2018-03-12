@@ -54,3 +54,4 @@ gst_dep = dependency('gstreamer-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_dep'])
 
 subdir('gst')
+subdir('tests')
