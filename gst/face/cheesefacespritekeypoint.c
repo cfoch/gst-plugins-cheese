@@ -42,6 +42,7 @@
  */
 
 #include "cheesefacespritekeypoint.h"
+#include "cheesefacespriteframe.h"
 
 struct _CheeseFaceSpriteKeypoint {
   GObject parent_instance;
@@ -60,8 +61,13 @@ static void cheese_face_sprite_keypoint_get_property (GObject *object,
 static void cheese_face_sprite_keypoint_set_property (GObject *object,
     guint prop_id, const GValue *value, GParamSpec * pspec);
 static void cheese_face_sprite_keypoint_finalize (GObject * object);
-GPtrArray * cheese_face_sprite_keypoint_get_frames (
+CheeseFaceSpriteFrame * cheese_face_sprite_keypoint_get_frame (
+    CheeseFaceSpriteKeypoint * self, const guint i);
+guint cheese_face_sprite_keypoint_count_frames (
     CheeseFaceSpriteKeypoint * self);
+void cheese_face_sprite_keypoint_add_frame (CheeseFaceSpriteKeypoint * self,
+    CheeseFaceSpriteFrame * frame);
+
 
 enum {
   PROP_0,
@@ -175,10 +181,26 @@ cheese_face_sprite_keypoint_finalize (GObject * object)
   G_OBJECT_CLASS (cheese_face_sprite_keypoint_parent_class)->finalize (object);
 }
 
-GPtrArray *
-cheese_face_sprite_keypoint_get_frames (CheeseFaceSpriteKeypoint * self)
+CheeseFaceSpriteFrame *
+cheese_face_sprite_keypoint_get_frame (CheeseFaceSpriteKeypoint * self,
+    const guint i)
 {
-  return self->frames;
+  if (i >= self->frames->len)
+    return NULL;
+  return (CheeseFaceSpriteFrame *) g_ptr_array_index (self->frames, i);
+}
+
+guint
+cheese_face_sprite_keypoint_count_frames (CheeseFaceSpriteKeypoint * self)
+{
+  return self->frames->len;
+}
+
+void
+cheese_face_sprite_keypoint_add_frame (CheeseFaceSpriteKeypoint * self,
+    CheeseFaceSpriteFrame * frame)
+{
+  g_ptr_array_add (self->frames, frame);
 }
 
 CheeseFaceSpriteKeypoint *

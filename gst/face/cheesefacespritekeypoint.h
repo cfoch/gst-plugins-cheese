@@ -42,11 +42,12 @@
  */
 
 /* inclusion guard */
-#ifndef __CHEESE_FACE_SPRITE_H__
-#define __CHEESE_FACE_SPRITE_H__
+#ifndef __CHEESE_FACE_SPRITE_KEYPOINT_H__
+#define __CHEESE_FACE_SPRITE_KEYPOINT_H__
 
 #include <glib-object.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include "cheesefacespriteframe.h"
 
 G_BEGIN_DECLS
 
@@ -94,9 +95,13 @@ G_DECLARE_FINAL_TYPE (CheeseFaceSpriteKeypoint, cheese_face_sprite_keypoint,
  */
 CheeseFaceSpriteKeypoint * cheese_face_sprite_keypoint_new (
     CheeseFaceKeypoint type);
-GPtrArray * cheese_face_sprite_keypoint_get_frames (CheeseFaceSpriteKeypoint *
-    self);
+CheeseFaceSpriteFrame * cheese_face_sprite_keypoint_get_frame (
+    CheeseFaceSpriteKeypoint * self, const guint i);
+guint cheese_face_sprite_keypoint_count_frames (
+    CheeseFaceSpriteKeypoint * self);
+void cheese_face_sprite_keypoint_add_frame (CheeseFaceSpriteKeypoint * self,
+    CheeseFaceSpriteFrame * frame);
 
 G_END_DECLS
 
-#endif /* __CHEESE_FACE_SPRITE_H__ */
+#endif /* __CHEESE_FACE_SPRITE_KEYPOINT_H__ */
