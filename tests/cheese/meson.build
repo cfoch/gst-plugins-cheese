@@ -18,4 +18,11 @@ exe = executable('facespritekeypoint',
 )
 test('facespritekeypoint', exe)
 
-
+exe = executable('facesprite',
+  'facesprite.c',
+  join_paths(meson.source_root(), 'gst', 'face', 'cheesefacesprite.c'),
+  join_paths(meson.source_root(), 'gst', 'face', 'cheesefacespritekeypoint.c'),
+  install : false,
+  dependencies : [glib_dep, gobject_dep, gdk_dep, gdk_pixbuf_dep]
+)
+test('facesprite', exe)
