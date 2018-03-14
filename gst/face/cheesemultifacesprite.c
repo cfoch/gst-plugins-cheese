@@ -53,12 +53,12 @@ static void cheese_multiface_sprite_class_init (CheeseMultifaceSpriteClass *
     klass);
 static void cheese_multiface_sprite_init (CheeseMultifaceSprite * self);
 static void cheese_multiface_sprite_finalize (GObject * object);
-cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
+gboolean cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
     CheeseFaceSprite * face_sprite);
 guint cheese_multiface_sprite_count_face_sprite (
-    CheeseMultifaceSprite * self)
+    CheeseMultifaceSprite * self);
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
-    CheeseMultifaceSprite * self, const guint i)
+    CheeseMultifaceSprite * self, const guint i);
 CheeseMultifaceSprite * cheese_multiface_sprite_new ();
 
 
@@ -85,11 +85,13 @@ cheese_multiface_sprite_finalize (GObject * object)
   G_OBJECT_CLASS (cheese_multiface_sprite_parent_class)->finalize (object);
 }
 
-void
+gboolean
 cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
     CheeseFaceSprite * face_sprite)
 {
+  g_return_val_if_fail (CHEESE_IS_FACE_SPRITE (face_sprite), FALSE);
   g_ptr_array_add (self->faces, (gpointer) face_sprite);
+  return TRUE;
 }
 
 guint

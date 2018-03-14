@@ -46,6 +46,7 @@
 #define __CHEESE_MULTIFACE_SPRITE_H__
 
 #include <glib-object.h>
+#include "cheesefacesprite.h"
 /*
  * Potentially, include other headers on which this header depends.
  */
@@ -63,12 +64,12 @@ G_DECLARE_FINAL_TYPE (CheeseMultifaceSprite, cheese_multiface_sprite, CHEESE,
  * Method definitions.
  */
 CheeseMultifaceSprite * cheese_multiface_sprite_new (void);
-cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
+gboolean cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
     CheeseFaceSprite * face_sprite);
 const guint cheese_multiface_sprite_count_face_sprite (
-    CheeseMultifaceSprite * self)
+    CheeseMultifaceSprite * self);
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
-    CheeseMultifaceSprite * self, const guint i)
+    CheeseMultifaceSprite * self, const guint i);
 CheeseMultifaceSprite * cheese_multiface_sprite_new ();
 
 
