@@ -41,13 +41,19 @@
  * Boston, MA 02111-1307, USA.
  */
 
+#include <json-glib/json-glib.h>
 #include "cheesemultifacesprite.h"
 #include "cheesefacesprite.h"
+#include "cheesefacespriteframe.h"
+#include "cheesefacespritekeypoint.h"
 
 struct _CheeseMultifaceSprite {
   GObject parent_instance;
   GPtrArray *faces;
 };
+
+G_DEFINE_QUARK (cheese-multiface-sprite-error-quark,
+    cheese_multiface_sprite_error)
 
 static void cheese_multiface_sprite_class_init (CheeseMultifaceSpriteClass *
     klass);
@@ -60,7 +66,12 @@ guint cheese_multiface_sprite_count_face_sprite (
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
     CheeseMultifaceSprite * self, const guint i);
 CheeseMultifaceSprite * cheese_multiface_sprite_new ();
-
+CheeseMultifaceSprite * cheese_multiface_sprite_new_from_string (const gchar *
+    string, GError ** error);
+CheeseMultifaceSprite * cheese_multiface_sprite_new_from_location (const gchar *
+    location, GError ** error);
+static CheeseMultifaceSprite * cheese_multiface_sprite_new_from_parser (
+    JsonParser * parser, GError ** error);
 
 G_DEFINE_TYPE (CheeseMultifaceSprite, cheese_multiface_sprite, G_TYPE_OBJECT)
 static void
@@ -107,6 +118,138 @@ cheese_multiface_sprite_get_face_sprite (CheeseMultifaceSprite * self,
   if (i >= self->faces->len)
     return NULL;
   return g_ptr_array_index (self->faces, i);
+}
+
+static CheeseMultifaceSprite *
+cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
+{
+  guint i, f, k;
+  JsonNode *root, *faces_node, *frame_node;
+  JsonObject *face_object, *keypoint_object, *frame_object;
+  JsonArray *faces_array;
+  CheeseMultifaceSprite *multiface;
+  CheeseFaceSprite *face_sprite;
+  CheeseFaceSpriteKeypoint *sprite_keypoint;
+  CheeseFaceSpriteFrame *sprite_frame;
+  GEnumClass *keypoint_info =
+      G_ENUM_CLASS (g_type_class_ref (CHEESE_TYPE_FACE_KEYPOINT));
+
+  root = json_parser_get_root (parser);
+  if (!JSON_NODE_HOLDS_ARRAY (root))
+    goto format_error;
+
+  multiface = cheese_multiface_sprite_new ();
+  faces_array = json_node_get_array (root);
+  for (i = 0; i < json_array_get_length (faces_array); i++) {
+    faces_node = json_array_get_element (faces_array, i);
+    if (!JSON_NODE_HOLDS_OBJECT (faces_node))
+      goto format_error;
+    face_object = json_node_get_object (faces_node);
+
+    face_sprite = cheese_face_sprite_new ();
+    /* Iterate over each enum of CheeseFaceKeypoint. */
+    for (k = 0; k < keypoint_info->n_values - 1; k++) {
+      gboolean rotate, loop;
+      gdouble base_scale_factor;
+
+      keypoint_object = json_object_get_object_member (face_object,
+          keypoint_info->values[k].value_nick);
+
+      if (keypoint_object) {
+        JsonArray *frames_array;
+
+        /* Get the array of frames */
+        frames_array = json_object_get_array_member (keypoint_object, "frames");
+        if (frames_array) {
+          sprite_keypoint =
+              cheese_face_sprite_keypoint_new (keypoint_info->values[k].value);
+
+          for (f = 0; f < json_array_get_length (frames_array); f++) {
+            const gchar *location = NULL;
+            frame_node = json_array_get_element (frames_array, f);
+            if (!JSON_NODE_HOLDS_OBJECT (frame_node))
+              goto format_error;
+
+            frame_object = json_node_get_object (frame_node);
+            location = json_object_get_string_member (frame_object, "location");
+            if (!location)
+              goto format_error;
+
+            sprite_frame = cheese_face_sprite_frame_new_from_location (location,
+                error);
+            if (!sprite_frame)
+              goto format_error;
+
+            cheese_face_sprite_keypoint_add_frame (sprite_keypoint,
+                sprite_frame);
+          }
+
+          if (cheese_face_sprite_keypoint_count_frames (sprite_keypoint) == 0) {
+            g_object_unref (sprite_keypoint);
+            goto format_error;
+          }
+
+          if (json_object_has_member (keypoint_object, "rotate")) {
+            rotate = json_object_get_boolean_member (keypoint_object, "rotate");
+            g_object_set (G_OBJECT (sprite_keypoint), "rotate", rotate, NULL);
+          }
+          if (json_object_has_member (keypoint_object, "loop")) {
+            loop = json_object_get_boolean_member (keypoint_object, "loop");
+            g_object_set (G_OBJECT (sprite_keypoint), "loop", loop, NULL);
+          }
+          if (json_object_has_member (keypoint_object, "base-scale-factor")) {
+            base_scale_factor = json_object_get_boolean_member (keypoint_object,
+                "base-scale-factor");
+            g_object_set (G_OBJECT (sprite_keypoint), "base-scale-factor",
+                base_scale_factor, NULL);
+          }
+          cheese_face_sprite_add_sprite_keypoint (face_sprite, sprite_keypoint);
+        }
+      }
+    }
+    if (cheese_face_sprite_count_sprite_keypoint (face_sprite) == 0) {
+      g_object_unref (face_sprite);
+      goto format_error;
+    }
+    cheese_multiface_sprite_add_face_sprite (multiface, face_sprite);
+  }
+  if (cheese_multiface_sprite_count_face_sprite (multiface) == 0) {
+    g_object_unref (multiface);
+    goto format_error;
+  }
+
+  return multiface;
+
+/* Clean up and error handling. */
+format_error:
+  if (error != NULL) {
+    g_set_error (error, CHEESE_MULTIFACE_SPRITE_ERROR,
+        CHEESE_MULTIFACE_SPRITE_ERROR_DESERIALIZE,
+        /* TODO: gettext? */
+        "Not a valid CheeseMultifaceSprite JSON format.");
+  }
+  return NULL;
+}
+
+CheeseMultifaceSprite *
+cheese_multiface_sprite_new_from_string (const gchar * string, GError ** error)
+{
+  JsonParser *parser;
+  parser = json_parser_new ();
+  if (!json_parser_load_from_data (parser, string, -1, error))
+    return NULL;
+  return cheese_multiface_sprite_new_from_parser (parser, error);
+}
+
+CheeseMultifaceSprite *
+cheese_multiface_sprite_new_from_location (const gchar * location,
+    GError ** error)
+{
+  JsonParser *parser;
+  parser = json_parser_new ();
+  if (!json_parser_load_from_file (parser, location, error))
+    return NULL;
+  return cheese_multiface_sprite_new_from_parser (parser, error);
 }
 
 CheeseMultifaceSprite *

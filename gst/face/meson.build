@@ -23,10 +23,11 @@ gdk_dep = dependency('gdk-3.0', version : ['>= 3.22'], required : true)
 gdk_pixbuf_dep = dependency('gdk-pixbuf-2.0', version : ['>= 2.36.0'],
   required : true)
 cairo_dep = dependency('cairo', version : ['>= 1.15.0'], required : true)
+json_glib_dep = dependency('json-glib-1.0', version : ['>= 1.4.3'], required : true)
 
 if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
     and graphene_gobject_dep.found() and gdk_pixbuf_dep.found()
-    and cairo_dep.found())
+    and cairo_dep.found() and json_glib_dep.found ())
   face_args = []
   if host_machine.cpu_family().startswith('x86')
     face_args += '-DUSE_SSE41'
@@ -40,7 +41,7 @@ if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
     include_directories : [configinc, hungarianinc],
     dependencies : [gstbase_dep, gstvideo_dep, opencv_dep, dlib_dep,
                     graphene_dep, graphene_gobject_dep, gdk_dep, gdk_pixbuf_dep,
-                    cairo_dep],
+                    cairo_dep, json_glib_dep],
     install : true,
     install_dir : plugins_install_dir,
   )

@@ -60,6 +60,29 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (CheeseMultifaceSprite, cheese_multiface_sprite, CHEESE,
     MULTIFACE_SPRITE, GObject);
 
+/**
+ * CHEESE_MULTIFACE_SPRITE_ERROR:
+ *
+ * Error domain for multiface sprite file parsing.
+ * Errors in this domain will be from the #CheeseMultifaceSpriteError
+ * enumeration. See #GError for information on error domains.
+ */
+#define CHEESE_MULTIFACE_SPRITE_ERROR   (cheese_multiface_sprite_error_quark ())
+
+/**
+ * CheeseMultifaceSpriteError:
+ * @CHEESE_MULTIFACE_SPRITE_ERROR_DESERIALIZE: The JSON string being parsed is
+ *     is not a valid one.
+ *
+ * Error codes returned by Cheese multiface sprite file parsing.
+ */
+typedef enum {
+  CHEESE_MULTIFACE_SPRITE_ERROR_DESERIALIZE
+} CheeseMultifaceSpriteError;
+
+GLIB_AVAILABLE_IN_ALL
+GQuark g_bookmark_file_error_quark (void);
+
 /*
  * Method definitions.
  */
@@ -70,6 +93,10 @@ const guint cheese_multiface_sprite_count_face_sprite (
     CheeseMultifaceSprite * self);
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
     CheeseMultifaceSprite * self, const guint i);
+CheeseMultifaceSprite * cheese_multiface_sprite_new_from_string (const gchar *
+    string, GError ** error);
+CheeseMultifaceSprite * cheese_multiface_sprite_new_from_location (const gchar *
+    location, GError ** error);
 CheeseMultifaceSprite * cheese_multiface_sprite_new ();
 
 
