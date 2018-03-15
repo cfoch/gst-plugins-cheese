@@ -54,10 +54,8 @@ struct _CheeseFaceSpriteFrame {
 static void cheese_face_sprite_frame_class_init (CheeseFaceSpriteFrameClass *
     klass);
 static void cheese_face_sprite_frame_init (CheeseFaceSpriteFrame * self);
-static gboolean cheese_face_sprite_frame_create_pixbuf (
-    CheeseFaceSpriteFrame *self, GError ** error);
 static gboolean cheese_face_sprite_frame_set_pixbuf (
-    CheeseFaceSpriteFrame *self, GdkPixbuf * pixbuf);
+    CheeseFaceSpriteFrame *self, GdkPixbuf * pixbuf, gboolean inc_ref);
 static gboolean cheese_face_sprite_frame_set_location (
     CheeseFaceSpriteFrame *self, const gchar * location);
 static void cheese_face_sprite_frame_get_property (GObject *object,
@@ -123,31 +121,13 @@ cheese_face_sprite_frame_init (CheeseFaceSpriteFrame * self)
 }
 
 static gboolean
-cheese_face_sprite_frame_create_pixbuf (CheeseFaceSpriteFrame *self,
-    GError ** error)
-{
-  gboolean ret = FALSE;
-  if (self->pixbuf)
-    g_info ("A pixbuf was not created because it already exists.");
-  else {
-    self->pixbuf = gdk_pixbuf_new_from_file (self->location, error);
-    ret = self->pixbuf != NULL;
-  }
-  return ret;
-}
-
-static gboolean
 cheese_face_sprite_frame_set_pixbuf (CheeseFaceSpriteFrame *self,
-    GdkPixbuf * pixbuf)
+    GdkPixbuf * pixbuf, gboolean inc_ref)
 {
   g_return_val_if_fail (GDK_IS_PIXBUF (pixbuf), FALSE);
-
-  if (self->pixbuf == pixbuf)
-    return TRUE;
-  if (self->pixbuf)
-    g_object_unref (self->pixbuf);
   self->pixbuf = pixbuf;
-  g_object_ref (self->pixbuf);
+  if (inc_ref)
+    g_object_ref (self->pixbuf);
   return TRUE;
 }
 
@@ -156,8 +136,6 @@ cheese_face_sprite_frame_set_location (CheeseFaceSpriteFrame *self,
     const gchar * location)
 {
   g_return_val_if_fail (location != NULL && *location != '\0', FALSE);
-  if (self->location)
-    g_free (self->location);
   self->location = g_strdup (location);
   return TRUE;
 }
@@ -169,12 +147,10 @@ cheese_face_sprite_frame_get_property (GObject *object, guint prop_id,
   CheeseFaceSpriteFrame *self = (CheeseFaceSpriteFrame *) object;
   switch (prop_id) {
     case PROP_LOCATION:
-      if (self->location)
-        g_value_set_string (value, self->location);
+      g_value_set_string (value, self->location);
       break;
     case PROP_PIXBUF:
-      if (self->pixbuf)
-        g_value_set_object (value, self->pixbuf);
+      g_value_set_object (value, self->pixbuf);
       break;
     case PROP_DURATION:
       g_value_set_uint (value, self->duration);
@@ -232,7 +208,7 @@ cheese_face_sprite_frame_new_from_location (const gchar * location,
   g_return_val_if_fail (pixbuf != NULL, NULL);
 
   ret = g_object_new (CHEESE_TYPE_FACE_SPRITE_FRAME, NULL);
-  cheese_face_sprite_frame_set_pixbuf (ret, pixbuf);
+  cheese_face_sprite_frame_set_pixbuf (ret, pixbuf, FALSE);
   cheese_face_sprite_frame_set_location (ret, location);
   return ret;
 }
@@ -244,6 +220,6 @@ cheese_face_sprite_frame_new_from_pixbuf (GdkPixbuf * pixbuf)
   g_return_val_if_fail (GDK_IS_PIXBUF (pixbuf), NULL);
 
   ret = g_object_new (CHEESE_TYPE_FACE_SPRITE_FRAME, NULL);
-  cheese_face_sprite_frame_set_pixbuf (ret, pixbuf);
+  cheese_face_sprite_frame_set_pixbuf (ret, pixbuf, TRUE);
   return ret;
 }

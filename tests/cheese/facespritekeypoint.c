@@ -43,9 +43,48 @@
 
 #include <glib.h>
 #include "../../gst/face/cheesefacespritekeypoint.h"
+#include "../../gst/face/cheesefacespriteframe.h"
 
 static void
-test_set_properties ()
+test_frames ()
+{
+  CheeseFaceSpriteKeypoint *keypoint;
+  CheeseFaceSpriteFrame *frame0, *frame1, *frame2, *frame_out;
+  GdkPixbuf *pixbuf;
+  const guchar pixdata[] = {255, 100, 220};
+
+  /* Prepare pixbuf */
+  pixbuf = gdk_pixbuf_new_from_data (pixdata, GDK_COLORSPACE_RGB, FALSE, 8,
+      1, 1, 1 * 3, NULL, NULL);
+
+  keypoint = cheese_face_sprite_keypoint_new (CHEESE_FACE_KEYPOINT_PHILTRUM);
+  frame0 = cheese_face_sprite_frame_new_from_pixbuf (pixbuf);
+  frame1 = cheese_face_sprite_frame_new_from_pixbuf (pixbuf);
+  frame2 = cheese_face_sprite_frame_new_from_pixbuf (pixbuf);
+
+  g_assert_cmpint (cheese_face_sprite_keypoint_count_frames (keypoint), ==, 0);
+  cheese_face_sprite_keypoint_add_frame (keypoint, frame0);
+  g_assert_cmpint (cheese_face_sprite_keypoint_count_frames (keypoint), ==, 1);
+  cheese_face_sprite_keypoint_add_frame (keypoint, frame1);
+  g_assert_cmpint (cheese_face_sprite_keypoint_count_frames (keypoint), ==, 2);
+  cheese_face_sprite_keypoint_add_frame (keypoint, frame2);
+  g_assert_cmpint (cheese_face_sprite_keypoint_count_frames (keypoint), ==, 3);
+
+  frame_out = cheese_face_sprite_keypoint_get_frame (keypoint, 2);
+  g_assert (frame_out == frame2);
+  frame_out = cheese_face_sprite_keypoint_get_frame (keypoint, 0);
+  g_assert (frame_out == frame0);
+  frame_out = cheese_face_sprite_keypoint_get_frame (keypoint, 1);
+  g_assert (frame_out == frame1);
+  frame_out = cheese_face_sprite_keypoint_get_frame (keypoint, 99);
+  g_assert_null (frame_out);
+
+  g_object_unref (pixbuf);
+  g_object_unref (keypoint);
+}
+
+static void
+test_properties ()
 {
   CheeseFaceKeypoint face_keypoint;
   CheeseFaceSpriteKeypoint *keypoint;
@@ -86,5 +125,8 @@ main (int argc, char *argv[])
 {
   g_test_init (&argc, &argv, NULL);
   g_test_add_func ("/cheese/facespritekeypoint/test_new", test_new);
+  g_test_add_func ("/cheese/facespritekeypoint/test_properties",
+      test_properties);
+  g_test_add_func ("/cheese/facespritekeypoint/test_frames", test_frames);
   return g_test_run ();
 }

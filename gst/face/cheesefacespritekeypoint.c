@@ -162,7 +162,7 @@ cheese_face_sprite_keypoint_set_property (GObject *object, guint prop_id,
       self->rotate = g_value_get_boolean (value);
       break;
     case PROP_LOOP:
-      self->rotate = g_value_get_boolean (value);
+      self->loop = g_value_get_boolean (value);
       break;
     case PROP_BASE_SCALE_FACTOR:
       self->base_scale_factor = g_value_get_double (value);
