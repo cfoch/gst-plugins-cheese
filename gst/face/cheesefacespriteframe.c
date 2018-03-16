@@ -47,7 +47,7 @@ struct _CheeseFaceSpriteFrame {
   GObject parent_instance;
   guint duration;
   gchar * location;
-  gboolean base_scale_factor;
+  gdouble base_scale_factor;
   GdkPixbuf *pixbuf;
 };
 
@@ -205,7 +205,8 @@ cheese_face_sprite_frame_new_from_location (const gchar * location,
   g_return_val_if_fail (location != NULL && *location != '\0', NULL);
 
   pixbuf = gdk_pixbuf_new_from_file (location, error);
-  g_return_val_if_fail (pixbuf != NULL, NULL);
+  if (!pixbuf)
+    return NULL;
 
   ret = g_object_new (CHEESE_TYPE_FACE_SPRITE_FRAME, NULL);
   cheese_face_sprite_frame_set_pixbuf (ret, pixbuf, FALSE);

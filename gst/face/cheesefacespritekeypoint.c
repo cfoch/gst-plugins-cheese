@@ -42,7 +42,26 @@
  */
 
 #include "cheesefacespritekeypoint.h"
-#include "cheesefacespriteframe.h"
+
+GType
+cheese_face_keypoint_get_type (void)
+{
+  static GType cheese_face_keypoiny_type = 0;
+  if (!cheese_face_keypoiny_type) {
+    static GEnumValue keypoint_types[] = {
+      { CHEESE_FACE_KEYPOINT_PHILTRUM, "Philtrum", "philtrum" },
+      { CHEESE_FACE_KEYPOINT_MOUTH, "Mouth", "mouth" },
+      { CHEESE_FACE_KEYPOINT_EYE, "Eye", "eye" },
+      { CHEESE_FACE_KEYPOINT_NOSE, "Nose", "nose" },
+      { CHEESE_FACE_KEYPOINT_EAR, "Ear", "ear" },
+      { CHEESE_FACE_KEYPOINT_FACE, "Face", "face" },
+      { CHEESE_FACE_KEYPOINT_HEAD, "Head", "head" }
+    };
+    cheese_face_keypoiny_type = g_enum_register_static ("CheeseFaceKeypoint",
+        keypoint_types);
+  }
+  return cheese_face_keypoiny_type;
+}
 
 struct _CheeseFaceSpriteKeypoint {
   GObject parent_instance;

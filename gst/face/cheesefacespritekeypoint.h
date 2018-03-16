@@ -62,30 +62,11 @@ typedef enum
   CHEESE_FACE_KEYPOINT_HEAD
 } CheeseFaceKeypoint;
 
-#define CHEESE_TYPE_FACE_KEYPOINT (cheese_face_keypoint_get_type ())
-static GType
-cheese_face_keypoint_get_type (void)
-{
-  static GType cheese_face_keypoiny_type = 0;
-  if (!cheese_face_keypoiny_type) {
-    static GEnumValue keypoint_types[] = {
-      { CHEESE_FACE_KEYPOINT_PHILTRUM, "Philtrum", "philtrum" },
-      { CHEESE_FACE_KEYPOINT_MOUTH, "Mouth", "mouth" },
-      { CHEESE_FACE_KEYPOINT_EYE, "Eye", "eye" },
-      { CHEESE_FACE_KEYPOINT_NOSE, "Nose", "nose" },
-      { CHEESE_FACE_KEYPOINT_EAR, "Ear", "ear" },
-      { CHEESE_FACE_KEYPOINT_FACE, "Face", "face" },
-      { CHEESE_FACE_KEYPOINT_HEAD, "Head", "head" }
-    };
-    cheese_face_keypoiny_type = g_enum_register_static ("CheeseFaceKeypoint",
-        keypoint_types);
-  }
-  return cheese_face_keypoiny_type;
-}
-
 /*
  * Type declaration.
  */
+#define CHEESE_TYPE_FACE_KEYPOINT (cheese_face_keypoint_get_type ())
+
 #define CHEESE_TYPE_FACE_SPRITE_KEYPOINT cheese_face_sprite_keypoint_get_type ()
 G_DECLARE_FINAL_TYPE (CheeseFaceSpriteKeypoint, cheese_face_sprite_keypoint,
     CHEESE, FACE_SPRITE_KEYPOINT, GObject);

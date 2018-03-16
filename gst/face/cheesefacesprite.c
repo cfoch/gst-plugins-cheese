@@ -42,7 +42,6 @@
  */
 
 #include "cheesefacesprite.h"
-#include "cheesefacespritekeypoint.h"
 
 struct _CheeseFaceSprite {
   GObject parent_instance;

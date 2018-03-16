@@ -43,9 +43,6 @@
 
 #include <json-glib/json-glib.h>
 #include "cheesemultifacesprite.h"
-#include "cheesefacesprite.h"
-#include "cheesefacespriteframe.h"
-#include "cheesefacespritekeypoint.h"
 
 struct _CheeseMultifaceSprite {
   GObject parent_instance;
@@ -150,27 +147,37 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
     /* Iterate over each enum of CheeseFaceKeypoint. */
     for (k = 0; k < keypoint_info->n_values - 1; k++) {
       gboolean rotate, loop;
+      const gchar *keypoint_nick = keypoint_info->values[k].value_nick;
       gdouble base_scale_factor;
 
-      keypoint_object = json_object_get_object_member (face_object,
-          keypoint_info->values[k].value_nick);
+      if (!json_object_has_member (face_object, keypoint_nick))
+        continue;
 
+      keypoint_object = json_object_get_object_member (face_object,
+          keypoint_nick);
       if (keypoint_object) {
         JsonArray *frames_array;
 
         /* Get the array of frames */
+        if (!json_object_has_member (keypoint_object, "frames"))
+          continue;
+
         frames_array = json_object_get_array_member (keypoint_object, "frames");
         if (frames_array) {
           sprite_keypoint =
               cheese_face_sprite_keypoint_new (keypoint_info->values[k].value);
-
           for (f = 0; f < json_array_get_length (frames_array); f++) {
+            guint duration;
+            gdouble base_scale_factor;
             const gchar *location = NULL;
             frame_node = json_array_get_element (frames_array, f);
             if (!JSON_NODE_HOLDS_OBJECT (frame_node))
               goto format_error;
 
             frame_object = json_node_get_object (frame_node);
+            if (!json_object_has_member (frame_object, "location"))
+              goto format_error;
+
             location = json_object_get_string_member (frame_object, "location");
             if (!location)
               goto format_error;
@@ -179,6 +186,19 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
                 error);
             if (!sprite_frame)
               goto format_error;
+
+            if (json_object_has_member (frame_object, "duration")) {
+              duration = json_object_get_int_member (frame_object,
+                  "duration");
+              g_object_set (G_OBJECT (sprite_frame), "duration", duration,
+                  NULL);
+            }
+            if (json_object_has_member (frame_object, "base-scale-factor")) {
+              base_scale_factor = json_object_get_double_member (frame_object,
+                  "base-scale-factor");
+              g_object_set (G_OBJECT (sprite_frame), "base-scale-factor",
+                  base_scale_factor, NULL);
+            }
 
             cheese_face_sprite_keypoint_add_frame (sprite_keypoint,
                 sprite_frame);
@@ -198,7 +218,7 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
             g_object_set (G_OBJECT (sprite_keypoint), "loop", loop, NULL);
           }
           if (json_object_has_member (keypoint_object, "base-scale-factor")) {
-            base_scale_factor = json_object_get_boolean_member (keypoint_object,
+            base_scale_factor = json_object_get_double_member (keypoint_object,
                 "base-scale-factor");
             g_object_set (G_OBJECT (sprite_keypoint), "base-scale-factor",
                 base_scale_factor, NULL);
@@ -222,7 +242,7 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
 
 /* Clean up and error handling. */
 format_error:
-  if (error != NULL) {
+  if (*error == NULL) {
     g_set_error (error, CHEESE_MULTIFACE_SPRITE_ERROR,
         CHEESE_MULTIFACE_SPRITE_ERROR_DESERIALIZE,
         /* TODO: gettext? */

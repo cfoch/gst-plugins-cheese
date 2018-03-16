@@ -47,9 +47,8 @@
 
 #include <glib-object.h>
 #include "cheesefacesprite.h"
-/*
- * Potentially, include other headers on which this header depends.
- */
+#include "cheesefacespriteframe.h"
+#include "cheesefacespritekeypoint.h"
 
 G_BEGIN_DECLS
 
