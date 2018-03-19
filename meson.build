@@ -30,11 +30,14 @@ configure_file(output : 'config.h', configuration : cdata)
 
 gst_plugins_bad_args = ['-DHAVE_CONFIG_H']
 configinc = include_directories('.')
+libsinc = include_directories('gst-libs')
 hungarianinc = include_directories('hungarian-algorithm-cpp')
 
-
-
 gst_req = '>= @0@.@1@.0'.format(gst_version_major, gst_version_minor)
+api_version = '1.0'
+soversion = 0
+libversion = '@0@.@1@.0'.format(soversion, gst_version_minor.to_int() * 100 + gst_version_micro.to_int())
+
 # GStreamer dependencies
 gst_dep = dependency('gstreamer-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_dep'])
@@ -54,3 +57,4 @@ gst_dep = dependency('gstreamer-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_dep'])
 
 subdir('gst')
+subdir('gst-libs')
