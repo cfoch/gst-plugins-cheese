@@ -64,6 +64,9 @@
 #endif
 
 #include <gst/gst.h>
+#include <gst/cheese/face/cheesemultifacemeta.h>
+#include <gst/cheese/face/cheesefaceinfo.h>
+
 #include <cstdio>
 #include <iostream>
 #include <vector>
@@ -450,9 +453,12 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   gint64 time_scale_down, time_hungarian, time_face_detection, time_scale_up;
   gint64 time_pose_estimation, time_landmark, time_others, time_total;
   gint64 time_post;
+  GstCheeseMultifaceMeta *multiface_meta;
 
   time_scale_down = time_hungarian = time_face_detection = time_scale_up =
       time_pose_estimation = time_landmark = time_post = -1;
+
+  multiface_meta = gst_buffer_add_cheese_multiface_meta (buf);
 
   if (debug)
     time_total = cv::getTickCount ();
@@ -563,6 +569,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     for (i = 0; i < to_remove.size (); i++) {
       GST_LOG ("Face %d was deleted.", i);
       filter->faces->erase (to_remove[i]);
+      gst_cheese_multiface_meta_add_removed_face_id (multiface_meta, i);
     }
   }
 
@@ -675,6 +682,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   for (auto &kv : *filter->faces) {
     GValue facedata_value = G_VALUE_INIT;
     GstStructure *facedata_st;
+    GstCheeseFaceInfo *info;
     guint id = kv.first;
     CheeseFace &face = kv.second;
 
@@ -893,6 +901,29 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
         time_post += end - start;
       }
       GST_LOG ("Faces: append message with information about face %d.", id);
+    }
+
+    if (post_msg) {
+      /* Set metadata */
+      info = gst_cheese_face_info_new ();
+      gst_cheese_multiface_info_insert (multiface_meta->faces, id, info);
+      /* Add metadata info */
+      cheese_face_info_set_bounding_box (info,
+          GRAPHENE_RECT_INIT (face.bounding_box.left (),
+              face.bounding_box.top (), face.bounding_box.width (),
+              face.bounding_box.height ()));
+      cheese_face_info_set_display (info,
+          face.last_detected_frame == filter->frame_number);
+      /* TODO */
+      /* Use enums instead of a hard-coded 68 value */
+      if (face.landmark.size () == 68) {
+        guint it;
+        graphene_point_t landmark_keypoints[68];
+        for (it = 0; it < face.landmark.size (); it++)
+          landmark_keypoints[it] =
+              GRAPHENE_POINT_INIT (face.landmark[it].x, face.landmark[it].y);
+        cheese_face_info_set_landmark_keypoints (info, landmark_keypoints, 68);
+      }
     }
   }
   cvImg.release ();
