@@ -29,7 +29,7 @@ if (opencv_dep.found() and dlib_dep.found() and graphene_dep.found()
     link_args : ['-lgstopencv-1.0', '-lgslcblas'],
     include_directories : [configinc, hungarianinc],
     dependencies : [gstbase_dep, gstvideo_dep, opencv_dep, dlib_dep,
-                    graphene_dep, graphene_gobject_dep],
+                    graphene_dep, graphene_gobject_dep, gstcheese_dep],
     install : true,
     install_dir : plugins_install_dir,
   )
