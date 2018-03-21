@@ -53,7 +53,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-1.0 autovideosrc ! videoconvert ! faceoverlay location=/path/image1.svg,/path/image2.svg x=0.5 y=0.5 w=0.7 h=0.7 ! videoconvert ! autovideosink
+ * gst-launch-1.0 autovideosrc ! videoconvert ! faceoverlay location=sprite.json ! videoconvert ! autovideosink
  * ]|
  * </refsect2>
  */
@@ -187,15 +187,16 @@ face_overlay_data_get_keypoint_pixinfo (FaceOverlayData * self,
   graphene_point_t *pt_ptr;
   *pt = GRAPHENE_POINT_INIT (0.0, 0.0);
 
-  /* Rotation is not supported yet */
-  landmark = cheese_face_info_get_landmark_keypoints (self->face_info);
-
   /* TODO Do not hard-code this */
-  if (landmark->len != 68) {
-    GST_WARNING ("Face %d: this face does not have a 68-keypoint shape model "
-        "info.", face_id);
+  if (cheese_face_info_get_landmark_type (self->face_info) !=
+      CHEESE_FACE_LANDMARK_TYPE_68) {
+    GST_WARNING ("Face %d: a %d keypoint shape model info was not found.",
+        face_id, CHEESE_FACE_LANDMARK_N (CHEESE_FACE_LANDMARK_TYPE_68));
     return FALSE;
   }
+
+  /* Rotation is not supported yet */
+  landmark = cheese_face_info_get_landmark_keypoints (self->face_info);
 
   switch (keypoint_type) {
     case CHEESE_FACE_KEYPOINT_PHILTRUM:
@@ -478,11 +479,27 @@ probe_overlay_buffer (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
 
 static void
 gst_cheese_face_overlay_draw_overlay_from_pixbuf (GstElement * overlay,
-    cairo_t * cr, GdkPixbuf * pixbuf, graphene_point_t pos)
+    cairo_t * cr, GdkPixbuf * pixbuf, graphene_point_t image_pos,
+    graphene_point_t keypoint_pos, gdouble rot_angle)
 {
-  gdk_cairo_set_source_pixbuf (cr, pixbuf, pos.x, pos.y);
-  cairo_paint (cr);
-  g_object_unref (pixbuf);
+  if (rot_angle == 0.0) {
+    gdk_cairo_set_source_pixbuf (cr, pixbuf, image_pos.x, image_pos.y);
+    cairo_paint (cr);
+  } else {
+    int img_width, img_height;
+
+    img_width = gdk_pixbuf_get_width (pixbuf);
+    img_height = gdk_pixbuf_get_height (pixbuf);
+
+    cairo_save (cr);
+    cairo_translate (cr, image_pos.x + img_width / 2,
+        image_pos.y + img_height / 2);
+    cairo_rotate (cr, -rot_angle);
+    cairo_translate (cr, -img_width / 2, -img_height / 2);
+    gdk_cairo_set_source_pixbuf (cr, pixbuf, 0, 0);
+    cairo_paint (cr);
+    cairo_restore (cr);
+  }
 }
 
 static void
@@ -531,13 +548,15 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
       gdouble scale_factor;
       int img_real_width, img_real_height;
       GdkPixbuf *scaled_pixbuf;
+      gboolean rotate;
+      gdouble rot_angle = 0.0;
 
       /* Get the frame sprite to this current frame for this face. */
       keypoint_sprite = cheese_face_sprite_get_sprite_keypoint (face_sprite, i);
       frame_sprite = cheese_face_sprite_keypoint_get_frame_at (keypoint_sprite,
           filter->frame_counter);
       g_object_get (G_OBJECT (keypoint_sprite), "keypoint", &keypoint_type,
-          NULL);
+          "rotate", &rotate, NULL);
 
       /* Obtain its pixbuf */
       g_object_get (G_OBJECT (frame_sprite), "pixbuf", &pixbuf,
@@ -551,15 +570,17 @@ gst_cheese_face_overlay_draw_overlay (GstElement * overlay, cairo_t * cr,
       if (!draw)
         continue;
 
-      GST_LOG ("Scaling frame by a scale factor of %.2f.", scale_factor);
       scaled_pixbuf = gdk_pixbuf_scale_simple (pixbuf,
           img_real_width * scale_factor, img_real_height * scale_factor,
           GDK_INTERP_NEAREST);
 
       face_overlay_data_get_image_position (face_data, keypoint_type, face_id,
           &keypoint_position, scaled_pixbuf, &img_position);
+      if (rotate)
+        cheese_face_info_get_eye_rotation (face_data->face_info, &rot_angle);
       gst_cheese_face_overlay_draw_overlay_from_pixbuf (overlay, cr,
-          scaled_pixbuf, img_position);
+          scaled_pixbuf, img_position, keypoint_position, rot_angle);
+      g_object_unref (scaled_pixbuf);
     }
     face_data->frame_counter++;
   }
