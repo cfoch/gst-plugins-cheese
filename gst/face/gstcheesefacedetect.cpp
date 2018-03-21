@@ -904,6 +904,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
     }
 
     if (post_msg) {
+      int n_keypoints = CHEESE_FACE_LANDMARK_N (CHEESE_FACE_LANDMARK_TYPE_68);
       /* Set metadata */
       info = gst_cheese_face_info_new ();
       gst_cheese_multiface_info_insert (multiface_meta->faces, id, info);
@@ -914,15 +915,15 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
               face.bounding_box.height ()));
       cheese_face_info_set_display (info,
           face.last_detected_frame == filter->frame_number);
-      /* TODO */
-      /* Use enums instead of a hard-coded 68 value */
-      if (face.landmark.size () == 68) {
+
+      if (face.landmark.size () == n_keypoints) {
         guint it;
-        graphene_point_t landmark_keypoints[68];
+        graphene_point_t landmark_keypoints[n_keypoints];
         for (it = 0; it < face.landmark.size (); it++)
           landmark_keypoints[it] =
               GRAPHENE_POINT_INIT (face.landmark[it].x, face.landmark[it].y);
-        cheese_face_info_set_landmark_keypoints (info, landmark_keypoints, 68);
+        cheese_face_info_set_landmark_keypoints (info, landmark_keypoints,
+            n_keypoints);
       }
     }
   }
