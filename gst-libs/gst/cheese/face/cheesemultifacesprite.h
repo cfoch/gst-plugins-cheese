@@ -52,12 +52,9 @@
 
 G_BEGIN_DECLS
 
-/*
- * Type declaration.
- */
 #define CHEESE_TYPE_MULTIFACE_SPRITE cheese_multiface_sprite_get_type ()
 G_DECLARE_FINAL_TYPE (CheeseMultifaceSprite, cheese_multiface_sprite, CHEESE,
-    MULTIFACE_SPRITE, GObject);
+    MULTIFACE_SPRITE, GObject)
 
 /**
  * CHEESE_MULTIFACE_SPRITE_ERROR:
@@ -79,24 +76,17 @@ typedef enum {
   CHEESE_MULTIFACE_SPRITE_ERROR_DESERIALIZE
 } CheeseMultifaceSpriteError;
 
-GLIB_AVAILABLE_IN_ALL
-GQuark g_bookmark_file_error_quark (void);
-
-/*
- * Method definitions.
- */
 CheeseMultifaceSprite * cheese_multiface_sprite_new (void);
 gboolean cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
     CheeseFaceSprite * face_sprite);
 const guint cheese_multiface_sprite_count_face_sprite (
     CheeseMultifaceSprite * self);
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
-    CheeseMultifaceSprite * self, const guint i);
+    CheeseMultifaceSprite * self, const guint index);
 CheeseMultifaceSprite * cheese_multiface_sprite_new_from_string (const gchar *
     string, GError ** error);
 CheeseMultifaceSprite * cheese_multiface_sprite_new_from_location (const gchar *
     location, GError ** error);
-CheeseMultifaceSprite * cheese_multiface_sprite_new ();
 
 
 G_END_DECLS

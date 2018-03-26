@@ -50,18 +50,12 @@
 
 G_BEGIN_DECLS
 
-/*
- * Type declaration.
- */
 #define CHEESE_TYPE_FACE_SPRITE cheese_face_sprite_get_type ()
 G_DECLARE_FINAL_TYPE (CheeseFaceSprite, cheese_face_sprite, CHEESE, FACE_SPRITE,
-    GObject);
+    GObject)
 
-/*
- * Method definitions.
- */
 CheeseFaceSpriteKeypoint * cheese_face_sprite_get_sprite_keypoint (
-    CheeseFaceSprite * self, const guint i);
+    CheeseFaceSprite * self, const guint index);
 guint cheese_face_sprite_count_sprite_keypoint (CheeseFaceSprite * self);
 void cheese_face_sprite_add_sprite_keypoint (CheeseFaceSprite *self,
     CheeseFaceSpriteKeypoint * sprite_keypoint);

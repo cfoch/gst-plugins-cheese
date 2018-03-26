@@ -64,22 +64,16 @@ typedef enum
   CHEESE_FACE_KEYPOINT_HEAD
 } CheeseFaceKeypoint;
 
-/*
- * Type declaration.
- */
 #define CHEESE_TYPE_FACE_KEYPOINT (cheese_face_keypoint_get_type ())
 
 #define CHEESE_TYPE_FACE_SPRITE_KEYPOINT cheese_face_sprite_keypoint_get_type ()
 G_DECLARE_FINAL_TYPE (CheeseFaceSpriteKeypoint, cheese_face_sprite_keypoint,
-    CHEESE, FACE_SPRITE_KEYPOINT, GObject);
+    CHEESE, FACE_SPRITE_KEYPOINT, GObject)
 
-/*
- * Method definitions.
- */
 CheeseFaceSpriteKeypoint * cheese_face_sprite_keypoint_new (
     CheeseFaceKeypoint type);
 CheeseFaceSpriteFrame * cheese_face_sprite_keypoint_get_frame (
-    CheeseFaceSpriteKeypoint * self, const guint i);
+    CheeseFaceSpriteKeypoint * self, const guint index);
 CheeseFaceSpriteFrame * cheese_face_sprite_keypoint_get_frame_at (
     CheeseFaceSpriteKeypoint * self, guint64 frame_number);
 guint cheese_face_sprite_keypoint_get_duration (

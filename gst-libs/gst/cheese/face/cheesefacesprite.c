@@ -53,7 +53,7 @@ static void cheese_face_sprite_init (CheeseFaceSprite * self);
 static void cheese_face_sprite_finalize (GObject * object);
 
 CheeseFaceSpriteKeypoint * cheese_face_sprite_get_sprite_keypoint (
-    CheeseFaceSprite *self, const guint i);
+    CheeseFaceSprite *self, const guint index);
 guint cheese_face_sprite_count_sprite_keypoint (CheeseFaceSprite *self);
 void cheese_face_sprite_add_sprite_keypoint (CheeseFaceSprite *self,
     CheeseFaceSpriteKeypoint * sprite_keypoint);
@@ -83,12 +83,24 @@ cheese_face_sprite_finalize (GObject * object)
   G_OBJECT_CLASS (cheese_face_sprite_parent_class)->finalize (object);
 }
 
+/**
+ * cheese_face_sprite_get_sprite_keypoint:
+ * @self: a #CheeseFaceSprite
+ * @index: the index of the #CheeseFaceSpriteKeypoint object to return
+ *
+ * Gets the #CheeseFaceSpriteKeypoint at the given index.
+ *
+ * Returns: (transfer full) (nullable): The newly created
+ * #CheeseFaceSpriteKeypoint, or %NULL if the index is out of range.
+ */
 CheeseFaceSpriteKeypoint *
-cheese_face_sprite_get_sprite_keypoint (CheeseFaceSprite *self, const guint i)
+cheese_face_sprite_get_sprite_keypoint (CheeseFaceSprite *self,
+    const guint index)
 {
-  if (i >= self->keypoints->len)
+  if (index >= self->keypoints->len)
     return NULL;
-  return (CheeseFaceSpriteKeypoint *) g_ptr_array_index (self->keypoints, i);
+  return (CheeseFaceSpriteKeypoint *) g_ptr_array_index (self->keypoints,
+      index);
 }
 
 guint

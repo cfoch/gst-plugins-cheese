@@ -83,7 +83,7 @@ static void cheese_face_sprite_keypoint_set_property (GObject *object,
     guint prop_id, const GValue *value, GParamSpec * pspec);
 static void cheese_face_sprite_keypoint_finalize (GObject * object);
 CheeseFaceSpriteFrame * cheese_face_sprite_keypoint_get_frame (
-    CheeseFaceSpriteKeypoint * self, const guint i);
+    CheeseFaceSpriteKeypoint * self, const guint index);
 guint cheese_face_sprite_keypoint_count_frames (
     CheeseFaceSpriteKeypoint * self);
 void cheese_face_sprite_keypoint_add_frame (CheeseFaceSpriteKeypoint * self,
@@ -202,14 +202,25 @@ cheese_face_sprite_keypoint_finalize (GObject * object)
   G_OBJECT_CLASS (cheese_face_sprite_keypoint_parent_class)->finalize (object);
 }
 
+/**
+ * cheese_face_sprite_keypoint_get_frame:
+ * @self: a #CheeseFaceSpriteKeypoint
+ * @index: the index of the #CheeseFaceSpriteFrame object to return
+ *
+ * Gets the #CheeseFaceSpriteFrame at the given index.
+ *
+ * Returns: (transfer full) (nullable): The newly created
+ * #CheeseFaceSpriteFrame, or %NULL if the index is out of range.
+ */
 CheeseFaceSpriteFrame *
 cheese_face_sprite_keypoint_get_frame (CheeseFaceSpriteKeypoint * self,
-    const guint i)
+    const guint index)
 {
-  if (i >= self->frames->len)
+  if (index >= self->frames->len)
     return NULL;
-  return (CheeseFaceSpriteFrame *) g_ptr_array_index (self->frames, i);
+  return (CheeseFaceSpriteFrame *) g_ptr_array_index (self->frames, index);
 }
+
 
 guint
 cheese_face_sprite_keypoint_get_duration (CheeseFaceSpriteKeypoint * self)
@@ -226,14 +237,27 @@ cheese_face_sprite_keypoint_get_duration (CheeseFaceSpriteKeypoint * self)
   return duration;
 }
 
-/* TODO gtk doc
- * Gets sprite frame at certain frame number.
- * Frames starting from 1 are expected.
+/**
+ * cheese_face_sprite_keypoint_get_frame_at:
+ * @self: a #CheeseFaceSpriteKeypoint
+ * @frame_number: the index of the #CheeseFaceSpriteFrame object to return
+ *
+ * Gets the #CheeseFaceSpriteFrame in which the given frame number is between
+ * the start and end (accumulated duration of previous frames). If loop property
+ * is set, then if the frame number is greater than the duration the accumulated
+ * duration is reset to zero.
+ *
+ * Returns: (transfer full) (nullable): The newly created
+ * #CheeseFaceSpriteFrame, or %NULL if the total duration is zero.
  */
 CheeseFaceSpriteFrame *
 cheese_face_sprite_keypoint_get_frame_at (CheeseFaceSpriteKeypoint * self,
     guint64 frame_number)
 {
+/* TODO gtk doc
+ * Gets sprite frame at certain frame number.
+ * Frames starting from 1 are expected.
+ */
   CheeseFaceSpriteFrame *sprite_frame = NULL;
   guint frame_duration, acc_duration = 0, duration, relative_frame_number, i;
   duration = cheese_face_sprite_keypoint_get_duration (self);

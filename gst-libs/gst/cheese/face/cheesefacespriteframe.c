@@ -214,6 +214,16 @@ cheese_face_sprite_frame_new_from_location (const gchar * location,
   return ret;
 }
 
+/**
+ * gtk_image_new_from_pixbuf:
+ * @pixbuf: (allow-none): a #GdkPixbuf, or %NULL
+ *
+ * Creates a new #CheeseFaceSpriteFrame that points to the #GdkPixbuf given as
+ * input argument; after that the reference counter of the pixbuf is incremented
+ * in one.
+ *
+ * Returns: a new #CheeseFaceSpriteFrame
+ **/
 CheeseFaceSpriteFrame *
 cheese_face_sprite_frame_new_from_pixbuf (GdkPixbuf * pixbuf)
 {

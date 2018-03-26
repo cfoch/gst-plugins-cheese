@@ -50,16 +50,10 @@
 
 G_BEGIN_DECLS
 
-/*
- * Type declaration.
- */
 #define CHEESE_TYPE_FACE_SPRITE_FRAME cheese_face_sprite_frame_get_type ()
 G_DECLARE_FINAL_TYPE (CheeseFaceSpriteFrame, cheese_face_sprite_frame, CHEESE,
-    FACE_SPRITE_FRAME, GObject);
+    FACE_SPRITE_FRAME, GObject)
 
-/*
- * Method definitions.
- */
 CheeseFaceSpriteFrame * cheese_face_sprite_frame_new_from_location (
     const gchar * location, GError ** error);
 CheeseFaceSpriteFrame * cheese_face_sprite_frame_new_from_pixbuf (GdkPixbuf *

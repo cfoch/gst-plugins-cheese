@@ -61,7 +61,7 @@ gboolean cheese_multiface_sprite_add_face_sprite (CheeseMultifaceSprite * self,
 guint cheese_multiface_sprite_count_face_sprite (
     CheeseMultifaceSprite * self);
 CheeseFaceSprite * cheese_multiface_sprite_get_face_sprite (
-    CheeseMultifaceSprite * self, const guint i);
+    CheeseMultifaceSprite * self, const guint index);
 CheeseMultifaceSprite * cheese_multiface_sprite_new ();
 CheeseMultifaceSprite * cheese_multiface_sprite_new_from_string (const gchar *
     string, GError ** error);
@@ -108,13 +108,23 @@ cheese_multiface_sprite_count_face_sprite (CheeseMultifaceSprite * self)
   return self->faces->len;
 }
 
+/**
+ * cheese_multiface_sprite_get_face_sprite:
+ * @self: a #CheeseMultifaceSprite
+ * @index: the index of the #CheeseFaceSprite object to return
+ *
+ * Gets the #CheeseFaceSpriteKeypoint at the given index.
+ *
+ * Returns: (transfer full) (nullable): The newly created
+ * #CheeseFaceSprite, or %NULL if the index is out of range.
+ */
 CheeseFaceSprite *
 cheese_multiface_sprite_get_face_sprite (CheeseMultifaceSprite * self,
-    const guint i)
+    const guint index)
 {
-  if (i >= self->faces->len)
+  if (index >= self->faces->len)
     return NULL;
-  return g_ptr_array_index (self->faces, i);
+  return g_ptr_array_index (self->faces, index);
 }
 
 static CheeseMultifaceSprite *
