@@ -60,17 +60,8 @@ typedef enum {
   CHEESE_FACE_LANDMARK_TYPE_UNKNOWN
 } CheeseFaceLandmarkType;
 
-
-inline gint
-CHEESE_FACE_LANDMARK_N (CheeseFaceLandmarkType type)
-{
-  if (type == CHEESE_FACE_LANDMARK_TYPE_5)
-    return 5;
-  if (type == CHEESE_FACE_LANDMARK_TYPE_68)
-    return 68;
-  return 0;
-}
-
+GST_EXPORT
+inline gint CHEESE_FACE_LANDMARK_N (CheeseFaceLandmarkType type);
 GstCheeseFaceInfo * gst_cheese_face_info_new ();
 GstCheeseFaceInfo * gst_cheese_face_info_copy (const GstCheeseFaceInfo * self);
 void cheese_face_info_set_bounding_box (GstCheeseFaceInfo * self,

@@ -44,6 +44,17 @@
 #include <math.h>
 #include "cheesefaceinfo.h"
 
+
+inline gint
+CHEESE_FACE_LANDMARK_N (CheeseFaceLandmarkType type)
+{
+  if (type == CHEESE_FACE_LANDMARK_TYPE_5)
+    return 5;
+  if (type == CHEESE_FACE_LANDMARK_TYPE_68)
+    return 68;
+  return 0;
+}
+
 struct _GstCheeseFaceInfo {
   GstMiniObject mini_object;
 
