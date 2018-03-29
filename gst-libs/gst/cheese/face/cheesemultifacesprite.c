@@ -155,7 +155,7 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
 
     face_sprite = cheese_face_sprite_new ();
     /* Iterate over each enum of CheeseFaceKeypoint. */
-    for (k = 0; k < keypoint_info->n_values - 1; k++) {
+    for (k = 0; k < keypoint_info->n_values; k++) {
       gboolean rotate, loop;
       const gchar *keypoint_nick = keypoint_info->values[k].value_nick;
       gdouble base_scale_factor;
