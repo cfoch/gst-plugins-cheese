@@ -89,7 +89,8 @@ if gst_dep.found() and graphene_dep.found()
     sources: [cheese_gen_sources],
     dependencies : [
       gst_dep,
-      graphene_dep
+      graphene_dep,
+      json_glib_dep
     ]
   )
 
