@@ -82,6 +82,7 @@ struct _GstCheeseFaceOverlay
 
   /* Properties */
   gchar *location;
+  gchar *data;
   CheeseMultifaceSprite *multiface_sprite;
 };
 

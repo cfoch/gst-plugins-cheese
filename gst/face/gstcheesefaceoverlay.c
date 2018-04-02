@@ -83,7 +83,8 @@ static GstStateChangeReturn gst_cheese_face_overlay_change_state (GstElement * e
     GstStateChange transition);
 static gboolean gst_cheese_face_overlay_create_children (GstCheeseFaceOverlay * filter);
 static void gst_cheese_face_overlay_dispose (GObject * object);
-static void gst_cheese_face_overlay_set_sprite (GstCheeseFaceOverlay * filter);
+static void gst_cheese_face_overlay_set_sprite_from_location (GstCheeseFaceOverlay * filter);
+static void gst_cheese_face_overlay_set_sprite_from_data (GstCheeseFaceOverlay * filter);
 static GstPadProbeReturn probe_overlay_buffer (GstPad * pad,
     GstPadProbeInfo * info, gpointer user_data);
 
@@ -292,7 +293,8 @@ face_overlay_data_get_keypoint_pixinfo (FaceOverlayData * self,
 enum
 {
   PROP_0,
-  PROP_LOCATION
+  PROP_LOCATION,
+  PROP_DATA
 };
 
 /* RGB16 is native-endianness in GStreamer */
@@ -609,6 +611,10 @@ gst_cheese_face_overlay_class_init (GstCheeseFaceOverlayClass * klass)
       g_param_spec_string ("location", "Location",
           "Location of SVG file to use for face overlay",
           "", G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_DATA,
+      g_param_spec_string ("data", "Data",
+          "Raw JSON data representing a CheeseMultifaceSprite",
+          "", G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (gstelement_class,
       "cheesefaceoverlay",
@@ -635,6 +641,7 @@ gst_cheese_face_overlay_init (GstCheeseFaceOverlay * filter)
   filter->buffer_probe_id = 0;
   filter->overlay = NULL;
   filter->location = NULL;
+  filter->data = NULL;
 
   filter->multiface_sprite = NULL;
 
@@ -666,7 +673,15 @@ gst_cheese_face_overlay_set_property (GObject * object, guint prop_id,
       if (filter->location)
         g_free (filter->location);
       filter->location = g_value_dup_string (value);
-      gst_cheese_face_overlay_set_sprite (filter);
+      gst_cheese_face_overlay_set_sprite_from_location (filter);
+      GST_OBJECT_UNLOCK (filter);
+      break;
+    case PROP_DATA:
+      GST_OBJECT_LOCK (filter);
+      if (filter->data)
+        g_free (filter->data);
+      filter->data = g_value_dup_string (value);
+      gst_cheese_face_overlay_set_sprite_from_data (filter);
       GST_OBJECT_UNLOCK (filter);
       break;
     default:
@@ -685,6 +700,11 @@ gst_cheese_face_overlay_get_property (GObject * object, guint prop_id,
     case PROP_LOCATION:
       GST_OBJECT_LOCK (filter);
       g_value_set_string (value, filter->location);
+      GST_OBJECT_UNLOCK (filter);
+      break;
+    case PROP_DATA:
+      GST_OBJECT_LOCK (filter);
+      g_value_set_string (value, filter->data);
       GST_OBJECT_UNLOCK (filter);
       break;
     default:
@@ -715,7 +735,7 @@ gst_cheese_face_overlay_dispose (GObject * object)
 }
 
 static void
-gst_cheese_face_overlay_set_sprite (GstCheeseFaceOverlay * filter)
+gst_cheese_face_overlay_set_sprite_from_location (GstCheeseFaceOverlay * filter)
 {
   GError *error = NULL;
 
@@ -732,6 +752,28 @@ gst_cheese_face_overlay_set_sprite (GstCheeseFaceOverlay * filter)
 
   filter->multiface_sprite =
       cheese_multiface_sprite_new_from_location (filter->location, &error);
+  if (!filter->multiface_sprite)
+    GST_ERROR (error->message);
+}
+
+static void
+gst_cheese_face_overlay_set_sprite_from_data (GstCheeseFaceOverlay * filter)
+{
+  GError *error = NULL;
+
+  if (filter->multiface_sprite) {
+    g_object_unref (filter->multiface_sprite);
+    filter->multiface_sprite = NULL;
+  }
+
+  if (!filter->data) {
+    GST_WARNING_OBJECT (filter, "Data property is not set. Not possible to "
+        "create sprite.");
+    return;
+  }
+
+  filter->multiface_sprite =
+      cheese_multiface_sprite_new_from_string (filter->data, &error);
   if (!filter->multiface_sprite)
     GST_ERROR (error->message);
 }
