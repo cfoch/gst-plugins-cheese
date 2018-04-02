@@ -130,16 +130,13 @@ cheese_multiface_sprite_get_face_sprite (CheeseMultifaceSprite * self,
 static CheeseMultifaceSprite *
 cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
 {
-  guint i, f, k;
-  JsonNode *root, *faces_node, *frame_node;
-  JsonObject *face_object, *keypoint_object, *frame_object;
+  guint i;
+  JsonNode *root, *faces_node;
+  JsonObject *face_object;
   JsonArray *faces_array;
   CheeseMultifaceSprite *multiface;
   CheeseFaceSprite *face_sprite;
-  CheeseFaceSpriteKeypoint *sprite_keypoint;
-  CheeseFaceSpriteFrame *sprite_frame;
-  GEnumClass *keypoint_info =
-      G_ENUM_CLASS (g_type_class_ref (CHEESE_TYPE_FACE_KEYPOINT));
+
 
   root = json_parser_get_root (parser);
   if (!JSON_NODE_HOLDS_ARRAY (root))
@@ -152,95 +149,10 @@ cheese_multiface_sprite_new_from_parser (JsonParser * parser, GError ** error)
     if (!JSON_NODE_HOLDS_OBJECT (faces_node))
       goto format_error;
     face_object = json_node_get_object (faces_node);
-
-    face_sprite = cheese_face_sprite_new ();
-    /* Iterate over each enum of CheeseFaceKeypoint. */
-    for (k = 0; k < keypoint_info->n_values; k++) {
-      gboolean rotate, loop;
-      const gchar *keypoint_nick = keypoint_info->values[k].value_nick;
-      gdouble base_scale_factor;
-
-      if (!json_object_has_member (face_object, keypoint_nick))
-        continue;
-
-      keypoint_object = json_object_get_object_member (face_object,
-          keypoint_nick);
-      if (keypoint_object) {
-        JsonArray *frames_array;
-
-        /* Get the array of frames */
-        if (!json_object_has_member (keypoint_object, "frames"))
-          continue;
-
-        frames_array = json_object_get_array_member (keypoint_object, "frames");
-        if (frames_array) {
-          sprite_keypoint =
-              cheese_face_sprite_keypoint_new (keypoint_info->values[k].value);
-          for (f = 0; f < json_array_get_length (frames_array); f++) {
-            guint duration;
-            gdouble base_scale_factor;
-            const gchar *location = NULL;
-            frame_node = json_array_get_element (frames_array, f);
-            if (!JSON_NODE_HOLDS_OBJECT (frame_node))
-              goto format_error;
-
-            frame_object = json_node_get_object (frame_node);
-            if (!json_object_has_member (frame_object, "location"))
-              goto format_error;
-
-            location = json_object_get_string_member (frame_object, "location");
-            if (!location)
-              goto format_error;
-
-            sprite_frame = cheese_face_sprite_frame_new_from_location (location,
-                error);
-            if (!sprite_frame)
-              goto format_error;
-
-            if (json_object_has_member (frame_object, "duration")) {
-              duration = json_object_get_int_member (frame_object,
-                  "duration");
-              g_object_set (G_OBJECT (sprite_frame), "duration", duration,
-                  NULL);
-            }
-            if (json_object_has_member (frame_object, "base-scale-factor")) {
-              base_scale_factor = json_object_get_double_member (frame_object,
-                  "base-scale-factor");
-              g_object_set (G_OBJECT (sprite_frame), "base-scale-factor",
-                  base_scale_factor, NULL);
-            }
-
-            cheese_face_sprite_keypoint_add_frame (sprite_keypoint,
-                sprite_frame);
-          }
-
-          if (cheese_face_sprite_keypoint_count_frames (sprite_keypoint) == 0) {
-            g_object_unref (sprite_keypoint);
-            goto format_error;
-          }
-
-          if (json_object_has_member (keypoint_object, "rotate")) {
-            rotate = json_object_get_boolean_member (keypoint_object, "rotate");
-            g_object_set (G_OBJECT (sprite_keypoint), "rotate", rotate, NULL);
-          }
-          if (json_object_has_member (keypoint_object, "loop")) {
-            loop = json_object_get_boolean_member (keypoint_object, "loop");
-            g_object_set (G_OBJECT (sprite_keypoint), "loop", loop, NULL);
-          }
-          if (json_object_has_member (keypoint_object, "base-scale-factor")) {
-            base_scale_factor = json_object_get_double_member (keypoint_object,
-                "base-scale-factor");
-            g_object_set (G_OBJECT (sprite_keypoint), "base-scale-factor",
-                base_scale_factor, NULL);
-          }
-          cheese_face_sprite_add_sprite_keypoint (face_sprite, sprite_keypoint);
-        }
-      }
-    }
-    if (cheese_face_sprite_count_sprite_keypoint (face_sprite) == 0) {
-      g_object_unref (face_sprite);
+    face_sprite = cheese_face_sprite_new_from_json_object (face_object, error);
+    if (!face_sprite)
       goto format_error;
-    }
+
     cheese_multiface_sprite_add_face_sprite (multiface, face_sprite);
   }
   if (cheese_multiface_sprite_count_face_sprite (multiface) == 0) {

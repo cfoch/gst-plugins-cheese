@@ -46,6 +46,7 @@
 #define __CHEESE_FACE_SPRITE_H__
 
 #include <glib-object.h>
+#include <json-glib/json-glib.h>
 #include "cheesefacespritekeypoint.h"
 
 G_BEGIN_DECLS
@@ -54,11 +55,37 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (CheeseFaceSprite, cheese_face_sprite, CHEESE, FACE_SPRITE,
     GObject)
 
+/**
+ * CHEESE_FACE_SPRITE_ERROR:
+ *
+ * Error domain for face sprite file parsing.
+ * Errors in this domain will be from the #CheeseFaceSpriteError
+ * enumeration. See #GError for information on error domains.
+ */
+#define CHEESE_FACE_SPRITE_ERROR   (cheese_face_sprite_error_quark ())
+
+/**
+ * CheeseFaceSpriteError:
+ * @CHEESE_SPRITE_ERROR_DESERIALIZE: The JSON string being parsed is
+ *     is not a valid one.
+ *
+ * Error codes returned by Cheese face sprite file parsing.
+ */
+typedef enum {
+  CHEESE_FACE_SPRITE_ERROR_DESERIALIZE
+} CheeseFaceSpriteError;
+
 CheeseFaceSpriteKeypoint * cheese_face_sprite_get_sprite_keypoint (
     CheeseFaceSprite * self, const guint index);
 guint cheese_face_sprite_count_sprite_keypoint (CheeseFaceSprite * self);
 void cheese_face_sprite_add_sprite_keypoint (CheeseFaceSprite *self,
     CheeseFaceSpriteKeypoint * sprite_keypoint);
+CheeseFaceSprite * cheese_face_sprite_new_from_json_object (
+    JsonObject *face_object, GError ** error);
+CheeseFaceSprite * cheese_face_sprite_new_from_string (const gchar * string,
+    GError ** error);
+CheeseFaceSprite * cheese_face_sprite_new_from_location (
+    const gchar * location, GError ** error);
 CheeseFaceSprite * cheese_face_sprite_new ();
 
 
