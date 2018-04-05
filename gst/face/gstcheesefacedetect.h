@@ -56,6 +56,8 @@
 
 #include "opencv2/opencv.hpp"
 #include <opencv2/core/core_c.h>
+#include <opencv2/core/utility.hpp>
+#include <opencv2/tracking.hpp>
 #if (CV_MAJOR_VERSION >= 3)
 #include <opencv2/imgproc/imgproc_c.h>
 #endif
@@ -91,6 +93,16 @@ G_BEGIN_DECLS
 
 #define MAX_FACIAL_KEYPOINTS      68
 
+typedef enum {
+  GST_CHEESEFACEDETECT_TRACKER_BOOSTING,
+  GST_CHEESEFACEDETECT_TRACKER_GOTURN,
+  GST_CHEESEFACEDETECT_TRACKER_KCF,
+  GST_CHEESEFACEDETECT_TRACKER_MEDIANFLOW,
+  GST_CHEESEFACEDETECT_TRACKER_MIL,
+  GST_CHEESEFACEDETECT_TRACKER_TLD
+} GstCheeseFaceDetectTrackerType;
+
+
 typedef struct _GstCheeseFaceDetect      GstCheeseFaceDetect;
 typedef struct _GstCheeseFaceDetectClass GstCheeseFaceDetectClass;
 
@@ -112,6 +124,7 @@ struct CheeseFace {
 
     gpointer user_data;
     CheeseFaceFreeFunc free_user_data_func;
+    cv::Ptr<cv::Tracker> tracker;
 
     CheeseFace ()
     {
@@ -145,6 +158,7 @@ struct _GstCheeseFaceDetect
   gboolean display_landmark;
   gboolean display_pose_estimation;
   gchar *landmark;
+  GstCheeseFaceDetectTrackerType tracker_type;
   gboolean use_hungarian;
   gboolean use_pose_estimation;
   guint hungarian_delete_threshold;

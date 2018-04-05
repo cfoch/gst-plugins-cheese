@@ -76,9 +76,43 @@
 using namespace std;
 using namespace dlib;
 
+static void gst_cheese_face_detect_finalize (GObject * obj);
+static void gst_cheese_face_detect_set_property (GObject * object,
+    guint prop_id, const GValue * value, GParamSpec * pspec);
+static void gst_cheese_face_detect_get_property (GObject * object,
+    guint prop_id, GValue * value, GParamSpec * pspec);
+static GstFlowReturn gst_cheese_face_detect_transform_ip (
+    GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
+
+
+#define GST_TYPE_CHEESEFACEDETECT_TRACKER (gst_cheese_face_detect_tracker_get_type ())
+static GType
+gst_cheese_face_detect_tracker_get_type (void)
+{
+  static GType tracker_type = 0;
+
+  if (!tracker_type) {
+    static GEnumValue tracker_types[] = {
+      { GST_CHEESEFACEDETECT_TRACKER_BOOSTING, "Boosting", "boosting" },
+      { GST_CHEESEFACEDETECT_TRACKER_GOTURN,  "GOTURN", "goturn"  },
+      { GST_CHEESEFACEDETECT_TRACKER_KCF, "Kernelized Correlation Filters",
+          "kcf" },
+      { GST_CHEESEFACEDETECT_TRACKER_MEDIANFLOW, "Median Flow", "median-flow" },
+      { GST_CHEESEFACEDETECT_TRACKER_MIL, "Multiple Instance Learning", "mil" },
+      { GST_CHEESEFACEDETECT_TRACKER_TLD,  "Tracking Learning Detection",
+          "tld" },
+      { 0, NULL, NULL },
+    };
+
+    tracker_type = g_enum_register_static ("GstCheeseFaceDetectTrackerType",
+        tracker_types);
+  }
+  return tracker_type;
+}
 
 #define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
 #define DEFAULT_SCALE_FACTOR                              1.0
+#define DEFAULT_TRACKER                                   GST_CHEESEFACEDETECT_TRACKER_KCF
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_detect_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_detect_debug
@@ -99,6 +133,7 @@ enum
   PROP_DISPLAY_LANDMARK,
   PROP_DISPLAY_POSE_ESTIMATION,
   PROP_LANDMARK,
+  PROP_TRACKER,
   PROP_USE_HUNGARIAN,
   PROP_HUNGARIAN_DELETE_THRESHOLD,
   PROP_USE_POSE_ESTIMATION,
@@ -126,14 +161,6 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
 #define gst_cheese_face_detect_parent_class parent_class
 G_DEFINE_TYPE (GstCheeseFaceDetect, gst_cheese_face_detect,
                GST_TYPE_OPENCV_VIDEO_FILTER);
-
-static void gst_cheese_face_detect_finalize (GObject * obj);
-static void gst_cheese_face_detect_set_property (GObject * object,
-    guint prop_id, const GValue * value, GParamSpec * pspec);
-static void gst_cheese_face_detect_get_property (GObject * object,
-    guint prop_id, GValue * value, GParamSpec * pspec);
-static GstFlowReturn gst_cheese_face_detect_transform_ip (
-    GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
 
 /* GObject vmethod implementations */
 
@@ -182,6 +209,11 @@ gst_cheese_face_detect_class_init (GstCheeseFaceDetectClass * klass)
           "Location of the shape model. You can get one from "
           "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
           NULL, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_TRACKER,
+      g_param_spec_enum ("tracker", "Tracker algorithm",
+          "Type of the tracker algorithm to use",
+          GST_TYPE_CHEESEFACEDETECT_TRACKER, DEFAULT_TRACKER,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_USE_HUNGARIAN,
       g_param_spec_boolean ("use-hungarian", "Display",
           "Sets whether to use the Hungarian algorithm to matching faces in "
@@ -234,6 +266,7 @@ gst_cheese_face_detect_init (GstCheeseFaceDetect * filter)
   filter->display_id = TRUE;
   filter->display_pose_estimation = TRUE;
   filter->landmark = NULL;
+  filter->tracker_type = DEFAULT_TRACKER;
   filter->face_detector =
       new frontal_face_detector (get_frontal_face_detector());
   filter->shape_predictor = NULL;
@@ -294,6 +327,10 @@ gst_cheese_face_detect_set_property (GObject * object, guint prop_id,
         filter->shape_predictor = NULL;
       }
       break;
+    case PROP_TRACKER:
+      filter->tracker_type =
+          (GstCheeseFaceDetectTrackerType) g_value_get_enum (value);
+      break;
     case PROP_USE_HUNGARIAN:
       filter->use_hungarian = g_value_get_boolean (value);
       break;
@@ -330,6 +367,9 @@ gst_cheese_face_detect_get_property (GObject * object, guint prop_id,
       break;
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
+      break;
+    case PROP_TRACKER:
+      g_value_set_enum (value, filter->tracker_type);
       break;
     case PROP_DISPLAY_POSE_ESTIMATION:
       g_value_set_boolean (value, filter->display_pose_estimation);
@@ -371,6 +411,34 @@ gst_cheese_face_detect_message_new (GstCheeseFaceDetect * filter,
       "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (buf), NULL);
 
   return gst_message_new_element (GST_OBJECT (filter), s);
+}
+
+static void
+gst_cheese_face_detect_select_tracker (GstCheeseFaceDetect * self,
+    cv::Ptr<cv::Tracker> & tracker)
+{
+  switch (self->tracker_type) {
+    case GST_CHEESEFACEDETECT_TRACKER_BOOSTING:
+      tracker = cv::TrackerBoosting::create ();
+      break;
+    case GST_CHEESEFACEDETECT_TRACKER_GOTURN:
+      tracker = cv::TrackerGOTURN::create ();
+      break;
+    case GST_CHEESEFACEDETECT_TRACKER_KCF:
+      tracker = cv::TrackerKCF::create ();
+      break;
+    case GST_CHEESEFACEDETECT_TRACKER_MEDIANFLOW:
+      tracker = cv::TrackerMedianFlow::create ();
+      break;
+    case GST_CHEESEFACEDETECT_TRACKER_MIL:
+      tracker = cv::TrackerMIL::create ();
+      break;
+    case GST_CHEESEFACEDETECT_TRACKER_TLD:
+      tracker = cv::TrackerTLD::create ();
+      break;
+    default:
+      g_assert_not_reached ();
+  }
 }
 
 static cv::Point
