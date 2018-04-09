@@ -1,7 +1,7 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -40,58 +40,72 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  */
+#ifndef __GSTCHEESEFACETRACK_INFO_H__
+#define __GSTCHEESEFACETRACK_INFO_H__
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
+#include <glib.h>
+#include <dlib/opencv.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/tracking.hpp>
 
-#include <gst/gst.h>
+G_BEGIN_DECLS
 
-#include "gstcheesefacedetect.h"
-#include "gstcheesefaceomelette.h"
-#include "gstcheesefaceoverlay.h"
-#include "gstcheesefacetrack.h"
+typedef enum {
+  GST_CHEESEFACETRACK_TRACKER_BOOSTING,
+  GST_CHEESEFACETRACK_TRACKER_GOTURN,
+  GST_CHEESEFACETRACK_TRACKER_KCF,
+  GST_CHEESEFACETRACK_TRACKER_MEDIANFLOW,
+  GST_CHEESEFACETRACK_TRACKER_MIL,
+  GST_CHEESEFACETRACK_TRACKER_TLD
+} GstCheeseFaceTrackTrackerType;
 
+typedef enum {
+  CHEESE_FACE_INFO_STATE_TRACKER_UNSET,
+  CHEESE_FACE_INFO_STATE_TRACKER_UNINITIALIZED,
+  CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED,
+  CHEESE_FACE_INFO_STATE_TRACKER_WAITING,
+  CHEESE_FACE_INFO_STATE_TRACKER_TRACKS,
+} CheeseFaceInfoState;
 
-/* entry point to initialize the plug-in
- * initialize the plug-in itself
- * register the element factories and other features
- */
-static gboolean
-cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
-{
-  /* debug category for fltering log messages
-   *
-   * exchange the string 'Template cheesefaceeffects' with your description
-   */
-  gst_element_register (cheesefaceeffects, "cheesefacedetect",
-      GST_RANK_NONE, gst_cheese_face_detect_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefacetrack",
-      GST_RANK_NONE, gst_cheese_face_track_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceomelette",
-      GST_RANK_NONE, gst_cheese_face_omelette_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceoverlay",
-      GST_RANK_NONE, gst_cheese_face_overlay_get_type ());
+typedef void (* CheeseFaceFreeFunc) (gpointer);
 
-  return TRUE;
-}
+struct CheeseFace {
+  private:
+    cv::Rect2d _bounding_box;
+    cv::Rect2d _previous_bounding_box;
+    guint _last_detected_frame;
+    gboolean _previous_bounding_box_exists;
+    CheeseFaceInfoState _state;
+    std::vector<cv::Point> _landmark;
 
-/* PACKAGE: this is usually set by autotools depending on some _INIT macro
- * in configure.ac and then written into and defined in config.h, but we can
- * just set it ourselves here in case someone doesn't use autotools to
- * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
- */
-#ifndef PACKAGE
-#define PACKAGE "myfirstcheesefaceeffects"
-#endif
+  public:
+    /* TODO */
+    /* Make these attributes private! */
+    cv::Ptr<cv::Tracker> _tracker;
+    guint tracking_duration;
 
-/* gstreamer looks for this structure to register cheesefaceeffectss
- *
- * exchange the string 'Template cheesefaceeffects' with your cheesefaceeffects description
- */
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    cheesefaceeffects,
-    "Template cheesefaceeffects",
-    cheesefaceeffects_init,
-    VERSION, "LGPL", "GStreamer", "http://gstreamer.net/")
+    gpointer user_data;
+    CheeseFaceFreeFunc free_user_data_func;
+
+    CheeseFace ();
+    ~CheeseFace ();
+    GstCheeseFaceInfo * to_face_info_at_scale (gdouble scale_factor = 1.0);
+    gboolean update_tracker (cv::Mat & frame);
+    cv::Point bounding_box_centroid ();
+    cv::Point previous_bounding_box_centroid ();
+    cv::Rect2d bounding_box ();
+    guint last_detected_frame ();
+    CheeseFaceInfoState state ();
+    gboolean get_previous_bounding_box (cv::Rect2d & ret);
+    void set_last_detected_frame (guint frame_number);
+    void set_bounding_box (dlib::rectangle & rect);
+    void set_landmark (std::vector<cv::Point> & landmark);
+    void create_tracker (GstCheeseFaceTrackTrackerType tracker_type);
+    void init_tracker (cv::Mat & img);
+    void release_tracker ();
+};
+
+G_END_DECLS
+
+#endif /* __GSTCHEESEFACETRACK_INFO_H__ */
+

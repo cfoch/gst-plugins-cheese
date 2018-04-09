@@ -1,7 +1,7 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -40,58 +40,24 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  */
+#include "utils.h"
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
-
-#include <gst/gst.h>
-
-#include "gstcheesefacedetect.h"
-#include "gstcheesefaceomelette.h"
-#include "gstcheesefaceoverlay.h"
-#include "gstcheesefacetrack.h"
-
-
-/* entry point to initialize the plug-in
- * initialize the plug-in itself
- * register the element factories and other features
- */
-static gboolean
-cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
+void
+dlib_rectangle_to_cv_rect (dlib::rectangle & dlib_rect, cv::Rect2d & cv_rect)
 {
-  /* debug category for fltering log messages
-   *
-   * exchange the string 'Template cheesefaceeffects' with your description
-   */
-  gst_element_register (cheesefaceeffects, "cheesefacedetect",
-      GST_RANK_NONE, gst_cheese_face_detect_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefacetrack",
-      GST_RANK_NONE, gst_cheese_face_track_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceomelette",
-      GST_RANK_NONE, gst_cheese_face_omelette_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceoverlay",
-      GST_RANK_NONE, gst_cheese_face_overlay_get_type ());
-
-  return TRUE;
+  cv_rect = cv::Rect2d (cv::Point (dlib_rect.left (), dlib_rect.top ()),
+      cv::Point (dlib_rect.right () + 1, dlib_rect.bottom () + 1));
 }
 
-/* PACKAGE: this is usually set by autotools depending on some _INIT macro
- * in configure.ac and then written into and defined in config.h, but we can
- * just set it ourselves here in case someone doesn't use autotools to
- * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
- */
-#ifndef PACKAGE
-#define PACKAGE "myfirstcheesefaceeffects"
-#endif
+void
+cv_rect_to_dlib_rectangle (cv::Rect2d & cv_rect, dlib::rectangle & dlib_rect)
+{
+  long tl_x, tl_y, br_x, br_y;
 
-/* gstreamer looks for this structure to register cheesefaceeffectss
- *
- * exchange the string 'Template cheesefaceeffects' with your cheesefaceeffects description
- */
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    cheesefaceeffects,
-    "Template cheesefaceeffects",
-    cheesefaceeffects_init,
-    VERSION, "LGPL", "GStreamer", "http://gstreamer.net/")
+  tl_x = (long) cv_rect.tl ().x;
+  tl_y = (long) cv_rect.tl ().y;
+  br_x = (long) cv_rect.br ().x - 1;
+  br_y = (long) cv_rect.br ().y - 1;
+
+  dlib_rect = dlib::rectangle (tl_x, tl_y, br_x, br_y);
+}

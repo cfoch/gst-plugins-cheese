@@ -1,7 +1,12 @@
 /*
- * GStreamer
+ * GStreamer Plugins Cheese
+ * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
+ * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
+ * Copyright (C) 2008 Michael Sheldon <mike@mikeasoft.com>
+ * Copyright (C) 2011 Stefan Sauer <ensonic@users.sf.net>
+ * Copyright (C) 2014 Robert Jobbagy <jobbagy.robert@gmail.com>
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -41,57 +46,49 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
+#ifndef __GST_CHEESEFACETRACK_H__
+#define __GST_CHEESEFACETRACK_H__
 
 #include <gst/gst.h>
+#include <graphene.h>
+#include <graphene-gobject.h>
+#include <gst/opencv/gstopencvvideofilter.h>
 
-#include "gstcheesefacedetect.h"
-#include "gstcheesefaceomelette.h"
-#include "gstcheesefaceoverlay.h"
-#include "gstcheesefacetrack.h"
+#include <opencv2/opencv.hpp>
+#include <opencv2/tracking.hpp>
+#include <dlib/image_processing/frontal_face_detector.h>
+#include <dlib/image_processing.h>
 
+#include "Hungarian.h"
 
-/* entry point to initialize the plug-in
- * initialize the plug-in itself
- * register the element factories and other features
- */
-static gboolean
-cheesefaceeffects_init (GstPlugin * cheesefaceeffects)
-{
-  /* debug category for fltering log messages
-   *
-   * exchange the string 'Template cheesefaceeffects' with your description
-   */
-  gst_element_register (cheesefaceeffects, "cheesefacedetect",
-      GST_RANK_NONE, gst_cheese_face_detect_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefacetrack",
-      GST_RANK_NONE, gst_cheese_face_track_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceomelette",
-      GST_RANK_NONE, gst_cheese_face_omelette_get_type ());
-  gst_element_register (cheesefaceeffects, "cheesefaceoverlay",
-      GST_RANK_NONE, gst_cheese_face_overlay_get_type ());
+G_BEGIN_DECLS
 
-  return TRUE;
-}
+/* #defines don't like whitespacey bits */
+#define GST_TYPE_CHEESEFACETRACK \
+  (gst_cheese_face_track_get_type())
+#define GST_CHEESEFACETRACK(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrack))
+#define GST_CHEESEFACETRACK_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrackClass))
+#define GST_IS_CHEESEFACETRACKER(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CHEESEFACETRACK))
+#define GST_IS_CHEESEFACETRACK_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CHEESEFACETRACK))
+#define GST_CHEESEFACETRACK_GET_CLASS(obj) \
+  (G_TYPE_INSTANCE_GET_CLASS((obj),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrackClass))
 
-/* PACKAGE: this is usually set by autotools depending on some _INIT macro
- * in configure.ac and then written into and defined in config.h, but we can
- * just set it ourselves here in case someone doesn't use autotools to
- * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
- */
-#ifndef PACKAGE
-#define PACKAGE "myfirstcheesefaceeffects"
-#endif
+#define MAX_FACIAL_KEYPOINTS      68
 
-/* gstreamer looks for this structure to register cheesefaceeffectss
- *
- * exchange the string 'Template cheesefaceeffects' with your cheesefaceeffects description
- */
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    cheesefaceeffects,
-    "Template cheesefaceeffects",
-    cheesefaceeffects_init,
-    VERSION, "LGPL", "GStreamer", "http://gstreamer.net/")
+typedef struct _GstCheeseFaceTrack      GstCheeseFaceTrack;
+typedef struct _GstCheeseFaceTrackClass GstCheeseFaceTrackClass;
+
+/**
+ * I still doubt if this struct should contain objects or just C structs like
+ * graphene points and rects
+ **/
+
+GType gst_cheese_face_track_get_type (void);
+
+G_END_DECLS
+
+#endif /* __GST_CHEESEFACETRACK_H__ */
