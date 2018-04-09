@@ -823,7 +823,7 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     for (i = 0; i < to_remove.size (); i++) {
       GST_LOG ("Face %d: about-removing face.", to_remove[i]);
       filter->faces->erase (to_remove[i]);
-      GST_LOG ("Face %d: this face has just been deleted.", i);
+      GST_LOG ("Face %d: this face has just been deleted.", to_remove[i]);
     }
   }
 
