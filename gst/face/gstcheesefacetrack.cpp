@@ -97,7 +97,6 @@ dlib_rectangle_to_cv_rect (dlib::rectangle & dlib_rect, cv::Rect2d & cv_rect)
       cv::Point (dlib_rect.right () + 1, dlib_rect.bottom () + 1));
 }
 
-/*
 static void
 cv_rect_to_dlib_rectangle (cv::Rect2d & cv_rect, dlib::rectangle & dlib_rect)
 {
@@ -105,13 +104,11 @@ cv_rect_to_dlib_rectangle (cv::Rect2d & cv_rect, dlib::rectangle & dlib_rect)
 
   tl_x = (long) cv_rect.tl ().x;
   tl_y = (long) cv_rect.tl ().y;
-  br_x = (long) cv_rect.tl ().x - 1;
-  br_y = (long) cv_rect.tl ().y - 1;
+  br_x = (long) cv_rect.br ().x - 1;
+  br_y = (long) cv_rect.br ().y - 1;
 
   dlib_rect = dlib::rectangle (tl_x, tl_y, br_x, br_y);
 }
-*/
-
 
 typedef enum {
   CHEESE_FACE_INFO_STATE_TRACKER_UNSET,
@@ -123,26 +120,19 @@ typedef enum {
 
 struct CheeseFace {
   private:
-    cv::Ptr<cv::Tracker> _tracker;
+
     cv::Rect2d _bounding_box;
     cv::Rect2d _previous_bounding_box;
     guint _last_detected_frame;
     gboolean _previous_bounding_box_exists;
     CheeseFaceInfoState _state;
-
-    void
-    release_tracker ()
-    {
-      _tracker.release ();
-      _state = CHEESE_FACE_INFO_STATE_TRACKER_UNSET;
-    }
+    std::vector<cv::Point> _landmark;
 
   public:
     /* TODO */
     /* Make these attributes private! */
+    cv::Ptr<cv::Tracker> _tracker;
     guint tracking_duration;
-
-    std::vector<cv::Point> landmark;
 
     gpointer user_data;
     CheeseFaceFreeFunc free_user_data_func;
@@ -158,11 +148,8 @@ struct CheeseFace {
 
     ~CheeseFace ()
     {
-      cout << "FACE ABOUT BEING FREED" << endl;
       if (user_data && free_user_data_func)
         free_user_data_func (user_data);
-
-      cout << "FACE FREED" << endl;
     }
 
     gboolean
@@ -238,6 +225,12 @@ struct CheeseFace {
     }
 
     void
+    set_landmark (std::vector<cv::Point> & landmark)
+    {
+      _landmark = landmark;
+    }
+
+    void
     create_tracker (GstCheeseFaceTrackTrackerType tracker_type)
     {
       _state = CHEESE_FACE_INFO_STATE_TRACKER_UNINITIALIZED;
@@ -260,8 +253,6 @@ struct CheeseFace {
         case GST_CHEESEFACETRACK_TRACKER_TLD:
           _tracker = cv::TrackerTLD::create ();
           break;
-        case GST_CHEESEFACETRACK_TRACKER_NONE:
-          break;
         default:
           _state = CHEESE_FACE_INFO_STATE_TRACKER_UNSET;
           g_assert_not_reached ();
@@ -275,6 +266,14 @@ struct CheeseFace {
       if (_tracker->init (img, _bounding_box))
         _state = CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED;
     }
+
+    void
+    release_tracker ()
+    {
+      _tracker.release ();
+      _state = CHEESE_FACE_INFO_STATE_TRACKER_UNSET;
+    }
+
 };
 
 struct _GstCheeseFaceTrack
@@ -285,6 +284,7 @@ struct _GstCheeseFaceTrack
   gboolean display_bounding_box;
   gboolean display_id;
   gboolean display_landmark;
+  gboolean display_detection_phase;
   gboolean display_pose_estimation;
   gchar *landmark;
   GstCheeseFaceTrackTrackerType tracker_type;
@@ -335,7 +335,6 @@ gst_cheese_face_track_tracker_get_type (void)
       { GST_CHEESEFACETRACK_TRACKER_MIL, "Multiple Instance Learning", "mil" },
       { GST_CHEESEFACETRACK_TRACKER_TLD, "Tracking Learning Detection",
           "tld" },
-      { GST_CHEESEFACETRACK_TRACKER_NONE,  "No Tracker", "none" },
       { 0, NULL, NULL }
     };
 
@@ -347,12 +346,15 @@ gst_cheese_face_track_tracker_get_type (void)
 
 #define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
 #define DEFAULT_SCALE_FACTOR                              1.0
-#define DEFAULT_TRACKER                                   GST_CHEESEFACETRACK_TRACKER_NONE
+#define DEFAULT_TRACKER                                   GST_CHEESEFACETRACK_TRACKER_MEDIANFLOW
 #define DEFAULT_DETECTION_GAP_DURATION                    10
-#define DEFAULT_DISTANCE_FACTOR                           0.18
+#define DEFAULT_DISTANCE_FACTOR                           10.0
 #define DEFAULT_BOUNDING_BOX_DETECT_COLOR                 cv::Scalar (255, 255, 0)
 #define DEFAULT_BOUNDING_BOX_TRACK_COLOR                  cv::Scalar (0, 255, 0)
+#define DEFAULT_LANDMARK_COLOR                            cv::Scalar (255, 140, 0)
 #define DEFAULT_ID_COLOR                                  cv::Scalar (255, 0, 0)
+#define DEFAULT_DETECTION_PHASE_COLOR                     cv::Scalar (0, 0, 255)
+
 
 GST_DEBUG_CATEGORY_STATIC (gst_cheese_face_track_debug);
 #define GST_CAT_DEFAULT gst_cheese_face_track_debug
@@ -371,6 +373,7 @@ enum
   PROP_DISPLAY_BOUNDING_BOX,
   PROP_DISPLAY_ID,
   PROP_DISPLAY_LANDMARK,
+  PROP_DISPLAY_DETECTION_PHASE,
   PROP_DISPLAY_POSE_ESTIMATION,
   PROP_LANDMARK,
   PROP_TRACKER,
@@ -431,6 +434,8 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
   gobject_class->set_property = gst_cheese_face_track_set_property;
   gobject_class->get_property = gst_cheese_face_track_get_property;
 
+  /* TODO */
+  /* Remove unused properties. */
   g_object_class_install_property (gobject_class, PROP_DISPLAY_BOUNDING_BOX,
       g_param_spec_boolean ("display-bounding-box", "Display",
           "Sets whether the detected faces should be highlighted in the output",
@@ -442,6 +447,12 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
   g_object_class_install_property (gobject_class, PROP_DISPLAY_LANDMARK,
       g_param_spec_boolean ("display-landmark", "Display the landmark",
           "Sets whether display the landmark for each face",
+          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject_class, PROP_DISPLAY_DETECTION_PHASE,
+      g_param_spec_boolean ("display-detection-phase",
+          "Display detection phase",
+          "Sets whether to display or not the bounding boxes of faces detected "
+          "during the detection phase.",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_DISPLAY_POSE_ESTIMATION,
       g_param_spec_boolean ("display-pose-estimation", "Display the landmark",
@@ -457,14 +468,6 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           "Type of the tracker algorithm to use",
           GST_TYPE_CHEESEFACETRACKER_TRACKER, DEFAULT_TRACKER,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  /*
-  g_object_class_install_property (gobject_class, PROP_TRACKER_DURATION,
-      g_param_spec_uint ("tracker-duration", "Tracker duration",
-          "Sets the maximum number of frames that the tracker will live "
-          "before it is destroyed.",
-          0, G_MAXUINT, DEFAULT_TRACKER_DURATION,
-          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  */
   g_object_class_install_property (gobject_class, PROP_USE_HUNGARIAN,
       g_param_spec_boolean ("use-hungarian", "Display",
           "Sets whether to use the Hungarian algorithm to matching faces in "
@@ -492,12 +495,12 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class,
       PROP_DISTANCE_FACTOR,
-      g_param_spec_float ("max-distance-factor", "Max distance factor",
+      g_param_spec_double ("max-distance-factor", "Max distance factor",
           "Sets the maximum distance factor to calculate the maximum distance "
           "that will be applied between centroids of the tracker and detector. "
           "This factor is in relation to the bounding box width. The value of "
           "this factor should usually be very low.",
-          0.0, 1.0, DEFAULT_DISTANCE_FACTOR,
+          0.0, G_MAXDOUBLE, DEFAULT_DISTANCE_FACTOR,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_DETECTION_GAP_DURATION,
       g_param_spec_uint ("detection-gap-duration", "Detection gap duration",
@@ -543,6 +546,8 @@ gst_cheese_face_track_init (GstCheeseFaceTrack * filter)
 
   filter->pose_model_points = new std::vector<cv::Point3d>;
 
+  /* TODO */
+  /* Remove unused stuff */
   filter->camera_matrix = NULL;
   filter->dist_coeffs = NULL;
   /* Pose estimation 3D model */
@@ -579,6 +584,9 @@ gst_cheese_face_track_set_property (GObject * object, guint prop_id,
     case PROP_DISPLAY_LANDMARK:
       filter->display_landmark = g_value_get_boolean (value);
       break;
+    case PROP_DISPLAY_DETECTION_PHASE:
+      filter->display_detection_phase = g_value_get_boolean (value);
+      break;
     case PROP_DISPLAY_POSE_ESTIMATION:
       filter->display_pose_estimation = g_value_get_boolean (value);
       break;
@@ -614,7 +622,7 @@ gst_cheese_face_track_set_property (GObject * object, guint prop_id,
       filter->scale_factor = g_value_get_float (value);
       break;
     case PROP_DISTANCE_FACTOR:
-      filter->distance_factor = g_value_get_float (value);
+      filter->distance_factor = g_value_get_double (value);
       break;
     case PROP_DETECTION_GAP_DURATION:
       filter->detection_gap_duration = g_value_get_uint (value);
@@ -641,6 +649,9 @@ gst_cheese_face_track_get_property (GObject * object, guint prop_id,
     case PROP_DISPLAY_LANDMARK:
       g_value_set_boolean (value, filter->display_landmark);
       break;
+    case PROP_DISPLAY_DETECTION_PHASE:
+      g_value_set_boolean (value, filter->display_detection_phase);
+      break;
     case PROP_LANDMARK:
       g_value_set_string (value, filter->landmark);
       break;
@@ -666,7 +677,7 @@ gst_cheese_face_track_get_property (GObject * object, guint prop_id,
       g_value_set_float (value, filter->scale_factor);
       break;
     case PROP_DISTANCE_FACTOR:
-      g_value_set_float (value, filter->distance_factor);
+      g_value_set_double (value, filter->distance_factor);
       break;
     case PROP_DETECTION_GAP_DURATION:
       g_value_set_uint (value, filter->detection_gap_duration);
@@ -701,19 +712,10 @@ static void
 gst_cheese_face_track_detect_faces (GstCheeseFaceTrack * filter,
     dlib::cv_image<bgr_pixel> & dlib_img, std::vector<dlib::rectangle> & dets)
 {
-  guint i;
   dets = (*filter->face_detector) (dlib_img);
-  /*
-  for (i = 0; filter->scale_factor != 1.0 && i < dets.size (); i++) {
-    dets[i].set_left (dets[i].left () / filter->scale_factor);
-    dets[i].set_top (dets[i].top () / filter->scale_factor);
-    dets[i].set_right (dets[i].right () / filter->scale_factor);
-    dets[i].set_bottom (dets[i].bottom () / filter->scale_factor);
-  }
-  */
 }
 
-std::vector<guint>
+static std::vector<guint>
 gst_cheese_face_track_create_faces (GstCheeseFaceTrack * filter,
     cv::Mat & img, std::vector<dlib::rectangle> & dets)
 {
@@ -736,10 +738,9 @@ gst_cheese_face_track_create_faces (GstCheeseFaceTrack * filter,
     filter->last_face_id++;
     (*filter->faces)[filter->last_face_id] = face_info;
     /* Init tracker */
-    (*filter->faces)[filter->last_face_id].create_tracker (filter->tracker_type);
-    cout << "TRACKER CREATED" << endl;
+    (*filter->faces)[filter->last_face_id].create_tracker (
+        filter->tracker_type);
     (*filter->faces)[filter->last_face_id].init_tracker (img);
-    cout << "TRACKER INITIALIZED" << endl;
 
     created_faces_ids.push_back (filter->last_face_id);
 
@@ -748,7 +749,7 @@ gst_cheese_face_track_create_faces (GstCheeseFaceTrack * filter,
   return created_faces_ids;
 }
 
-std::vector<cv::Point>
+static std::vector<cv::Point>
 get_centroids (std::vector<dlib::rectangle> & dets)
 {
   guint i;
@@ -776,10 +777,10 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
 {
   GstCheeseFaceTrack *filter = GST_CHEESEFACETRACK (base);
-
   /* Frame storage */
   cv::Mat cv_img (cv::cvarrToMat (img));
   cv::Mat cv_resized_img (cv::cvarrToMat (img));
+  std::vector<dlib::rectangle> resized_dets;
   dlib::cv_image<bgr_pixel> dlib_resized_img;
   // cv::UMat cv_uimg;
   // cv_uimg = cv_img.getUMat (cv::ACCESS_WRITE);
@@ -821,7 +822,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     }
 
     for (i = 0; i < to_remove.size (); i++) {
-      GST_LOG ("Face %d: about-removing face.", to_remove[i]);
       filter->faces->erase (to_remove[i]);
       GST_LOG ("Face %d: this face has just been deleted.", to_remove[i]);
     }
@@ -843,8 +843,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
   /* There is a detection cycle in the case new faces enter to the scene. */
   if (gst_cheese_face_track_is_detection_phase (filter) ||
       faces_ids_with_lost_target.size () > 0) {
-    std::vector<dlib::rectangle> resized_dets;
-
     if (gst_cheese_face_track_is_detection_phase (filter))
       GST_LOG ("Detection phase.");
     if (faces_ids_with_lost_target.size () > 0)
@@ -855,22 +853,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     /* Init faces, and thus create trackers */
     if (filter->faces->empty ())
       gst_cheese_face_track_create_faces (filter, cv_resized_img, resized_dets);
-
-    for (int i = 0; i < resized_dets.size (); i++) {
-      cv::Rect2d cvrect, ocvrect;
-      cv::Point ocentroid;
-      dlib_rectangle_to_cv_rect (resized_dets[i], cvrect);
-      ocvrect = cv::Rect (
-          cvrect.x / filter->scale_factor,
-          cvrect.y / filter->scale_factor,
-          cvrect.width / filter->scale_factor,
-          cvrect.height / filter->scale_factor);
-
-      ocentroid = (ocvrect.tl () + ocvrect.br ()) * 0.5;
-      cv::putText (cv_img, std::to_string (i), ocentroid,
-          cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar (0, 0, 255));
-      cv::rectangle (cv_img, ocvrect, cv::Scalar (0, 0, 255), 5);
-    }
 
     if (!non_created_faces_ids.empty () && resized_dets.size () > 0) {
       guint i, r, c;
@@ -890,26 +872,12 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
       /* Initialize cost matrix. */
       for (r = 0; r < detection_centroids.size (); r++) {
         std::vector<double> row;
-        double max_dist;
-        max_dist = filter->distance_factor * resized_dets[r].width ();
         for (c = 0; c < non_created_faces_ids.size (); c++) {
           const guint id = non_created_faces_ids[c];
           CheeseFace &face = (*filter->faces)[id];
           double dist;
-
           dist = cv::norm (cv::Mat (detection_centroids[r]),
               cv::Mat (face.bounding_box_centroid ()));
-
-          cout << "Distance from face " << id << " to centroid " << r << ": " << dist << endl;
-
-          /* FIXME */
-          /* This should be deleted. We just should iterate after solving */
-          /* the hungarian problem and update indices to -1 if distance > MAX */
-          /*
-          if (dist >= max_dist)
-            dist = G_MAXDOUBLE;
-          */
-
           row.push_back (dist);
         }
         cost_matrix.push_back (row);
@@ -919,22 +887,32 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
       GST_LOG ("Hungarian method: solve the Hungarian problem.");
       HungAlgo.Solve(cost_matrix, assignment);
 
-      cout << "Assignments: " << endl;
       for (i = 0; i < cost_matrix.size (); i++) {
-        if (assignment[i] != -1) {
-          const gint id = non_created_faces_ids[assignment[i]];
-          cv::Point cent = (*filter->faces)[id].bounding_box_centroid () / filter->scale_factor;
-          double dist = cv::norm (cv::Mat (detection_centroids[i]),
-              cv::Mat ((*filter->faces)[id].bounding_box_centroid ()));
-          cout << i << " -> " << non_created_faces_ids[assignment[i]] <<
-              ". Distance: " << dist << endl;
-        } else {
-          cout << i << " -> " << assignment[i] << endl;
-        }
-      }
+        const gboolean asigned = assignment[i] != -1;
+        gboolean create_face;
 
-      for (i = 0; i < cost_matrix.size (); i++) {
-        if (assignment[i] == -1) {
+        /* Discard faces if they are too far. */
+        if (asigned) {
+          const gint id = non_created_faces_ids[assignment[i]];
+          CheeseFace &face = (*filter->faces)[id];
+          double max_dist;
+          double dist;
+
+          create_face = FALSE;
+
+          dist = cv::norm (cv::Mat (detection_centroids[i]),
+              cv::Mat ((*filter->faces)[id].bounding_box_centroid ()));
+          max_dist = filter->distance_factor * resized_dets[i].width ();
+
+          if (dist >= max_dist) {
+            GST_LOG ("Face %d: this face is too far from detector", id);
+            face.release_tracker ();
+          }
+        } else {
+          create_face = TRUE;
+        }
+
+        if (create_face) {
           std::vector<dlib::rectangle> det_wrap;
           det_wrap.push_back (resized_dets[i]);
           /* Assume a new face was found. Create a new face. */
@@ -957,7 +935,26 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     }
   }
 
-  GST_LOG ("Prepare for drawing.");
+  if (filter->display_detection_phase && resized_dets.size () > 0) {
+    guint i;
+    GST_LOG ("Displaying detection phase.");
+    for (i = 0; i < resized_dets.size (); i++) {
+      cv::Rect2d cv_resized_rect, cv_rect;
+      cv::Point centroid;
+      dlib_rectangle_to_cv_rect (resized_dets[i], cv_resized_rect);
+      cv_rect = cv::Rect (
+          cv_resized_rect.x / filter->scale_factor,
+          cv_resized_rect.y / filter->scale_factor,
+          cv_resized_rect.width / filter->scale_factor,
+          cv_resized_rect.height / filter->scale_factor);
+
+      centroid = (cv_rect.tl () + cv_rect.br ()) * 0.5;
+      cv::putText (cv_img, std::to_string (i), centroid,
+          cv::FONT_HERSHEY_SIMPLEX, 1.0, DEFAULT_DETECTION_PHASE_COLOR);
+      cv::rectangle (cv_img, cv_rect, DEFAULT_DETECTION_PHASE_COLOR, 5);
+    }
+  }
+
   for (auto &kv : *filter->faces) {
     guint id = kv.first;
     CheeseFace &face = kv.second;
@@ -965,6 +962,9 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
         face.state () == CHEESE_FACE_INFO_STATE_TRACKER_WAITING) {
       cv::Rect2d resized_bounding_box, bounding_box;
       cv::Point centroid;
+
+      /* TODO */
+      /* Use metadata */
 
       resized_bounding_box = face.bounding_box ();
       bounding_box = cv::Rect (
@@ -974,16 +974,45 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
           resized_bounding_box.height / filter->scale_factor);
       centroid = (bounding_box.tl () + bounding_box.br ()) * 0.5;
 
+      if (filter->shape_predictor) {
+        guint j;
+        std::vector<cv::Point> landmark;
+        dlib::rectangle dlib_resized_bounding_box;
+        dlib::full_object_detection shape;
+
+        cv_rect_to_dlib_rectangle (resized_bounding_box,
+            dlib_resized_bounding_box);
+        shape = (*filter->shape_predictor)
+            (dlib_resized_img, dlib_resized_bounding_box);
+
+        if (filter->display_landmark)
+          GST_LOG ("Face %d: drawing landmark.", id);
+
+        for (j = 0; j < shape.num_parts (); j++) {
+          cv::Point keypoint (
+              shape.part (j).x () / filter->scale_factor,
+              shape.part (j).y () / filter->scale_factor);
+          landmark.push_back (keypoint);
+          if (filter->display_landmark) {
+            cv::circle(cv_img, keypoint, 1, DEFAULT_LANDMARK_COLOR, CV_FILLED);
+          }
+        }
+        face.set_landmark (landmark);
+      }
+
       if (gst_cheese_face_track_display_face (filter, face)) {
         GST_LOG ("Face %d: drawing bounding box. Position: (%d, %d)."
             "Size (w x h): %d x %d.", id,
             (int) bounding_box.x, (int) bounding_box.y,
             (int) bounding_box.width, (int) bounding_box.height);
         if (filter->display_bounding_box) {
-          if (face.state () == CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED)
-            cv::rectangle (cv_img, bounding_box, DEFAULT_BOUNDING_BOX_DETECT_COLOR);
-          else if (face.state () == CHEESE_FACE_INFO_STATE_TRACKER_WAITING)
-            cv::rectangle (cv_img, bounding_box, DEFAULT_BOUNDING_BOX_TRACK_COLOR);
+          if (face.state () == CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED) {
+            cv::rectangle (cv_img, bounding_box,
+                DEFAULT_BOUNDING_BOX_DETECT_COLOR);
+          } else if (face.state () == CHEESE_FACE_INFO_STATE_TRACKER_WAITING) {
+            cv::rectangle (cv_img, bounding_box,
+                DEFAULT_BOUNDING_BOX_TRACK_COLOR);
+          }
         }
         if (filter->display_id) {
           GST_LOG ("Face %d: drawing id number. Position: (%d, %d).", id,
@@ -992,12 +1021,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
               cv::FONT_HERSHEY_SIMPLEX, 1.0, DEFAULT_ID_COLOR);
         }
       }
-      /*
-      GST_LOG ("Face %d: drawing bounding box. Position: (%d, %d)."
-          "Size (w x h): %d x %d.", id,
-          (int) bounding_box.x, (int) bounding_box.y,
-          (int) bounding_box.width, (int) bounding_box.height);
-      */
     }
   }
 
