@@ -1,6 +1,7 @@
 hungariandir = join_paths(meson.source_root(), 'hungarian-algorithm-cpp')
 face_sources = [
   'gstcheesefacedetect.cpp',
+  'gstcheesefacetrack.cpp',
   'gstcheesefaceomelette.cpp',
   'gstcheesefaceoverlay.c',
   'gstcheesefaceeffects.cpp',
