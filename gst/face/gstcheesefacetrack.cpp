@@ -153,22 +153,22 @@ struct CheeseFace {
     }
 
     GstCheeseFaceInfo *
-    to_face_info (gdouble scale_factor = 1.0)
+    to_face_info_at_scale (gdouble scale_factor = 1.0)
     {
       GstCheeseFaceInfo *info;
       guint n_keypoints = CHEESE_FACE_LANDMARK_N (CHEESE_FACE_LANDMARK_TYPE_68);
       guint i;
-      gfloat tl_x, tl_y, br_x, br_y;
+      gfloat tl_x, tl_y, width, height;
 
       info = gst_cheese_face_info_new ();
 
       tl_x = _bounding_box.tl ().x * scale_factor;
       tl_y = _bounding_box.tl ().y * scale_factor;
-      br_x = _bounding_box.br ().x * scale_factor;
-      br_y = _bounding_box.br ().y * scale_factor;
+      width = _bounding_box.width * scale_factor;
+      height = _bounding_box.height * scale_factor;
 
       cheese_face_info_set_bounding_box (info,
-          GRAPHENE_RECT_INIT (tl_x, tl_y, br_x, br_y));
+          GRAPHENE_RECT_INIT (tl_x, tl_y, width, height));
 
       /* Only 68 landmarks supported now */
       if (_landmark.size () == n_keypoints) {
@@ -989,16 +989,26 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
   for (auto &kv : *filter->faces) {
     guint id = kv.first;
     CheeseFace &face = kv.second;
+    GstCheeseFaceInfo *info;
+    gboolean display;
+
+    display = gst_cheese_face_track_display_face (filter, face);
+
     if (face.state () == CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED ||
         face.state () == CHEESE_FACE_INFO_STATE_TRACKER_WAITING) {
-      GstCheeseFaceInfo *info;
       cv::Rect2d resized_bounding_box, bounding_box;
       cv::Point centroid;
-      gboolean display;
 
-      display = gst_cheese_face_track_display_face (filter, face);
+      /* Scale to original size. */
+      resized_bounding_box = face.bounding_box ();
+      bounding_box = cv::Rect (
+          resized_bounding_box.x / filter->scale_factor,
+          resized_bounding_box.y / filter->scale_factor,
+          resized_bounding_box.width / filter->scale_factor,
+          resized_bounding_box.height / filter->scale_factor);
+      centroid = (bounding_box.tl () + bounding_box.br ()) * 0.5;
 
-      /* Set landmark */
+      /* Set landmark. */
       if (filter->shape_predictor) {
         guint j;
         std::vector<cv::Point> landmark;
@@ -1014,32 +1024,18 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
           GST_LOG ("Face %d: drawing landmark.", id);
 
         for (j = 0; j < shape.num_parts (); j++) {
-          cv::Point keypoint (
-              shape.part (j).x () / filter->scale_factor,
-              shape.part (j).y () / filter->scale_factor);
-          landmark.push_back (keypoint);
+          cv::Point resized_keypoint (shape.part (j).x (), shape.part (j).y ());
+          landmark.push_back (resized_keypoint);
+          /* Draw */
           if (display && filter->display_landmark) {
-            cv::circle(cv_img, keypoint, 1, DEFAULT_LANDMARK_COLOR, CV_FILLED);
+            cv::circle(cv_img, resized_keypoint / filter->scale_factor, 1,
+                DEFAULT_LANDMARK_COLOR, CV_FILLED);
           }
         }
         face.set_landmark (landmark);
       }
 
-      /* Set metadata */
-      info = face.to_face_info (1.0 / filter->scale_factor);
-      cheese_face_info_set_display (info, display);
-      gst_cheese_multiface_info_insert (multiface_meta->faces, id, info);
-
       /* Draw */
-      resized_bounding_box = face.bounding_box ();
-      bounding_box = cv::Rect (
-          resized_bounding_box.x / filter->scale_factor,
-          resized_bounding_box.y / filter->scale_factor,
-          resized_bounding_box.width / filter->scale_factor,
-          resized_bounding_box.height / filter->scale_factor);
-      centroid = (bounding_box.tl () + bounding_box.br ()) * 0.5;
-
-
       if (display) {
         GST_LOG ("Face %d: drawing bounding box. Position: (%d, %d)."
             "Size (w x h): %d x %d.", id,
@@ -1062,6 +1058,10 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
         }
       }
     }
+    /* Set metadata */
+    info = face.to_face_info_at_scale (1.0 / filter->scale_factor);
+    cheese_face_info_set_display (info, display);
+    gst_cheese_multiface_info_insert (multiface_meta->faces, id, info);
   }
 
   filter->frame_number++;
