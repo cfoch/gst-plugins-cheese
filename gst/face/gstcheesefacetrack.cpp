@@ -523,7 +523,6 @@ gst_cheese_face_track_display_face (GstCheeseFaceTrack * filter,
 static std::vector<guint>
 gst_cheese_face_track_try_to_remove_faces (GstCheeseFaceTrack * filter)
 {
-  guint i;
   std::vector<guint> to_remove;
   for (auto &kv : *filter->faces) {
     guint delta_since_detected;
@@ -556,9 +555,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
   cv::Mat cv_resized_img (cv::cvarrToMat (img));
   std::vector<dlib::rectangle> resized_dets;
   dlib::cv_image<bgr_pixel> dlib_resized_img;
-  // cv::UMat cv_uimg;
-  // cv_uimg = cv_img.getUMat (cv::ACCESS_WRITE);
-  //std::vector<CheeseFace &> faces_with_lost_target;
   std::vector<guint> faces_ids_with_lost_target;
   std::vector<guint> faces_ids_to_remove;
   guint i;
@@ -610,7 +606,7 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
       gst_cheese_face_track_create_faces (filter, cv_resized_img, resized_dets);
 
     if (!non_created_faces_ids.empty () && resized_dets.size () > 0) {
-      guint i, r, c;
+      guint r, c;
       HungarianAlgorithm HungAlgo;
       std::vector<int> assignment;
       std::vector<std::vector<double>> cost_matrix;
@@ -734,7 +730,6 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
 
       /* Set landmark. */
       if (filter->shape_predictor) {
-        guint j;
         std::vector<cv::Point> landmark;
         dlib::rectangle dlib_resized_bounding_box;
         dlib::full_object_detection shape;
@@ -747,8 +742,8 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
         if (filter->display_landmark)
           GST_LOG ("Face %d: drawing landmark.", id);
 
-        for (j = 0; j < shape.num_parts (); j++) {
-          cv::Point resized_keypoint (shape.part (j).x (), shape.part (j).y ());
+        for (i = 0; i < shape.num_parts (); i++) {
+          cv::Point resized_keypoint (shape.part (i).x (), shape.part (i).y ());
           landmark.push_back (resized_keypoint);
           /* Draw */
           if (display && filter->display_landmark) {
