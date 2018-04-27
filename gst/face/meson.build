@@ -5,6 +5,8 @@ face_sources = [
   'gstcheesefaceomelette.cpp',
   'gstcheesefaceoverlay.c',
   'gstcheesefaceeffects.cpp',
+  'facetrack.cpp',
+  'utils.cpp',
   join_paths(hungariandir, 'Hungarian.cpp')
 ]
 

@@ -1,10 +1,5 @@
 /*
  * GStreamer Plugins Cheese
- * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
- * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2008 Michael Sheldon <mike@mikeasoft.com>
- * Copyright (C) 2011 Stefan Sauer <ensonic@users.sf.net>
- * Copyright (C) 2014 Robert Jobbagy <jobbagy.robert@gmail.com>
  * Copyright (C) 2018 Fabian Orccon <cfoch.fabian@gmail.com>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -45,64 +40,72 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  */
+#ifndef __GSTCHEESEFACETRACK_INFO_H__
+#define __GSTCHEESEFACETRACK_INFO_H__
 
-#ifndef __GST_CHEESEFACETRACK_H__
-#define __GST_CHEESEFACETRACK_H__
-
-#include <gst/gst.h>
-#include <graphene.h>
-#include <graphene-gobject.h>
-#include <gst/opencv/gstopencvvideofilter.h>
-
-#include "opencv2/opencv.hpp"
-#include <opencv2/core/core_c.h>
-#include <opencv2/core/utility.hpp>
-#include <opencv2/tracking.hpp>
-#if (CV_MAJOR_VERSION >= 3)
-#include <opencv2/imgproc/imgproc_c.h>
-#endif
-
-#include <dlib/string.h>
-#include <dlib/image_io.h>
-#include <dlib/image_processing/frontal_face_detector.h>
+#include <glib.h>
 #include <dlib/opencv.h>
-#include <dlib/image_processing/render_face_detections.h>
-#include <dlib/image_processing.h>
-
-#include <string>
-#include <map>
-#include <math.h>
-
-#include "Hungarian.h"
+#include <opencv2/opencv.hpp>
+#include <opencv2/tracking.hpp>
 
 G_BEGIN_DECLS
 
-/* #defines don't like whitespacey bits */
-#define GST_TYPE_CHEESEFACETRACK \
-  (gst_cheese_face_track_get_type())
-#define GST_CHEESEFACETRACK(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrack))
-#define GST_CHEESEFACETRACK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrackClass))
-#define GST_IS_CHEESEFACETRACKER(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CHEESEFACETRACK))
-#define GST_IS_CHEESEFACETRACK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CHEESEFACETRACK))
-#define GST_CHEESEFACETRACK_GET_CLASS(obj) \
-  (G_TYPE_INSTANCE_GET_CLASS((obj),GST_TYPE_CHEESEFACETRACK,GstCheeseFaceTrackClass))
+typedef enum {
+  GST_CHEESEFACETRACK_TRACKER_BOOSTING,
+  GST_CHEESEFACETRACK_TRACKER_GOTURN,
+  GST_CHEESEFACETRACK_TRACKER_KCF,
+  GST_CHEESEFACETRACK_TRACKER_MEDIANFLOW,
+  GST_CHEESEFACETRACK_TRACKER_MIL,
+  GST_CHEESEFACETRACK_TRACKER_TLD
+} GstCheeseFaceTrackTrackerType;
 
-#define MAX_FACIAL_KEYPOINTS      68
+typedef enum {
+  CHEESE_FACE_INFO_STATE_TRACKER_UNSET,
+  CHEESE_FACE_INFO_STATE_TRACKER_UNINITIALIZED,
+  CHEESE_FACE_INFO_STATE_TRACKER_INITIALIZED,
+  CHEESE_FACE_INFO_STATE_TRACKER_WAITING,
+  CHEESE_FACE_INFO_STATE_TRACKER_TRACKS,
+} CheeseFaceInfoState;
 
-typedef struct _GstCheeseFaceTrack      GstCheeseFaceTrack;
-typedef struct _GstCheeseFaceTrackClass GstCheeseFaceTrackClass;
+typedef void (* CheeseFaceFreeFunc) (gpointer);
 
-/**
- * I still doubt if this struct should contain objects or just C structs like
- * graphene points and rects
- **/
+struct CheeseFace {
+  private:
+    cv::Rect2d _bounding_box;
+    cv::Rect2d _previous_bounding_box;
+    guint _last_detected_frame;
+    gboolean _previous_bounding_box_exists;
+    CheeseFaceInfoState _state;
+    std::vector<cv::Point> _landmark;
 
-GType gst_cheese_face_track_get_type (void);
+  public:
+    /* TODO */
+    /* Make these attributes private! */
+    cv::Ptr<cv::Tracker> _tracker;
+    guint tracking_duration;
+
+    gpointer user_data;
+    CheeseFaceFreeFunc free_user_data_func;
+
+    CheeseFace ();
+    ~CheeseFace ();
+    GstCheeseFaceInfo * to_face_info_at_scale (gdouble scale_factor = 1.0);
+    gboolean update_tracker (cv::Mat & frame);
+    cv::Point bounding_box_centroid ();
+    cv::Point previous_bounding_box_centroid ();
+    cv::Rect2d bounding_box ();
+    guint last_detected_frame ();
+    CheeseFaceInfoState state ();
+    gboolean get_previous_bounding_box (cv::Rect2d & ret);
+    void set_last_detected_frame (guint frame_number);
+    void set_bounding_box (dlib::rectangle & rect);
+    void set_landmark (std::vector<cv::Point> & landmark);
+    void create_tracker (GstCheeseFaceTrackTrackerType tracker_type);
+    void init_tracker (cv::Mat & img);
+    void release_tracker ();
+};
 
 G_END_DECLS
 
-#endif /* __GST_CHEESEFACETRACK_H__ */
+#endif /* __GSTCHEESEFACETRACK_INFO_H__ */
+
