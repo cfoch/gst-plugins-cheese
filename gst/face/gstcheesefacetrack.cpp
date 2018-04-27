@@ -319,11 +319,9 @@ struct _GstCheeseFaceTrack
   gboolean display_id;
   gboolean display_landmark;
   gboolean display_detection_phase;
-  gboolean display_pose_estimation;
   gchar *landmark;
   GstCheeseFaceTrackTrackerType tracker_type;
   guint tracker_duration;
-  gboolean use_pose_estimation;
   guint delete_threshold;
   gfloat scale_factor;
   gdouble distance_factor;
@@ -332,15 +330,11 @@ struct _GstCheeseFaceTrack
   /* private props */
   dlib::frontal_face_detector *face_detector;
   dlib::shape_predictor *shape_predictor;
-  std::vector<cv::Point3d> *pose_model_points;
 
   guint last_face_id;
   guint frame_number;
   std::map<guint, CheeseFace> *faces;
   GHashTable *face_table;
-
-  cv::Mat *camera_matrix;
-  cv::Mat *dist_coeffs;
 };
 
 struct _GstCheeseFaceTrackClass 
@@ -407,12 +401,10 @@ enum
   PROP_DISPLAY_ID,
   PROP_DISPLAY_LANDMARK,
   PROP_DISPLAY_DETECTION_PHASE,
-  PROP_DISPLAY_POSE_ESTIMATION,
   PROP_LANDMARK,
   PROP_TRACKER,
   PROP_TRACKER_DURATION,
   PROP_DELETE_THRESHOLD,
-  PROP_USE_POSE_ESTIMATION,
   PROP_SCALE_FACTOR,
   PROP_DISTANCE_FACTOR,
   PROP_DETECTION_GAP_DURATION
@@ -486,10 +478,6 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           "Sets whether to display or not the bounding boxes of faces detected "
           "during the detection phase.",
           TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property (gobject_class, PROP_DISPLAY_POSE_ESTIMATION,
-      g_param_spec_boolean ("display-pose-estimation", "Display the landmark",
-          "Sets whether display the axis of the pose estimation for each face",
-          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_LANDMARK,
       g_param_spec_string ("landmark", "Landmark shape model",
           "Location of the shape model. You can get one from "
@@ -509,10 +497,6 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           0, G_MAXUINT,
           DEFAULT_DELETE_THRESHOLD,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property (gobject_class, PROP_USE_POSE_ESTIMATION,
-      g_param_spec_boolean ("use-pose-estimation", "Pose estimation",
-          "Sets whether to use estimate the pose of each face.",
-          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_SCALE_FACTOR,
       g_param_spec_float ("scale-factor", "Scale Factor",
           "Sets the scale factor the frame which be scaled with before face "
@@ -554,11 +538,9 @@ gst_cheese_face_track_init (GstCheeseFaceTrack * filter)
   filter->last_face_id = 0;
   filter->frame_number = INIT_FRAME_COUNTER ();
 
-  filter->use_pose_estimation = TRUE;
   filter->delete_threshold = DEFAULT_DELETE_THRESHOLD;
   filter->display_bounding_box = TRUE;
   filter->display_id = TRUE;
-  filter->display_pose_estimation = TRUE;
   filter->landmark = NULL;
   filter->tracker_type = DEFAULT_TRACKER;
   filter->detection_gap_duration = DEFAULT_DETECTION_GAP_DURATION;
@@ -569,26 +551,6 @@ gst_cheese_face_track_init (GstCheeseFaceTrack * filter)
   filter->distance_factor = DEFAULT_DISTANCE_FACTOR;
 
   filter->faces = new std::map<guint, CheeseFace>;
-
-  filter->pose_model_points = new std::vector<cv::Point3d>;
-
-  /* TODO */
-  /* Remove unused stuff */
-  filter->camera_matrix = NULL;
-  filter->dist_coeffs = NULL;
-  /* Pose estimation 3D model */
-  /* Nose tip */
-  filter->pose_model_points->push_back (cv::Point3d (0.f, 0.f, 0.f));
-  /* Chin */
-  filter->pose_model_points->push_back (cv::Point3d (0.f, -330.f, -65.f));
-  /* Left eye left corner */
-  filter->pose_model_points->push_back (cv::Point3d (-225.f, 170.f, -135.f));
-  /* Right eye right corner */
-  filter->pose_model_points->push_back (cv::Point3d (225.f, 170.f, -135.f));
-  /* Left Mouth corner */
-  filter->pose_model_points->push_back (cv::Point3d (-150.f, -150.f, -125.f));
-  /* Right mouth corner */
-  filter->pose_model_points->push_back (cv::Point3d (150.f, -150.f, -125.f));
 
   gst_opencv_video_filter_set_in_place (GST_OPENCV_VIDEO_FILTER_CAST (filter),
       TRUE);
@@ -613,9 +575,6 @@ gst_cheese_face_track_set_property (GObject * object, guint prop_id,
     case PROP_DISPLAY_DETECTION_PHASE:
       filter->display_detection_phase = g_value_get_boolean (value);
       break;
-    case PROP_DISPLAY_POSE_ESTIMATION:
-      filter->display_pose_estimation = g_value_get_boolean (value);
-      break;
     case PROP_LANDMARK:
       filter->landmark = g_value_dup_string (value);
       filter->shape_predictor = new dlib::shape_predictor;
@@ -637,9 +596,6 @@ gst_cheese_face_track_set_property (GObject * object, guint prop_id,
       break;
     case PROP_DELETE_THRESHOLD:
       filter->delete_threshold = g_value_get_uint (value);
-      break;
-    case PROP_USE_POSE_ESTIMATION:
-      filter->use_pose_estimation = g_value_get_boolean (value);
       break;
     case PROP_SCALE_FACTOR:
       filter->scale_factor = g_value_get_float (value);
@@ -684,14 +640,8 @@ gst_cheese_face_track_get_property (GObject * object, guint prop_id,
     case PROP_TRACKER_DURATION:
       g_value_set_uint (value, filter->tracker_duration);
       break;
-    case PROP_DISPLAY_POSE_ESTIMATION:
-      g_value_set_boolean (value, filter->display_pose_estimation);
-      break;
     case PROP_DELETE_THRESHOLD:
       g_value_set_uint (value, filter->delete_threshold);
-      break;
-    case PROP_USE_POSE_ESTIMATION:
-      g_value_set_boolean (value, filter->use_pose_estimation);
       break;
     case PROP_SCALE_FACTOR:
       g_value_set_float (value, filter->scale_factor);
@@ -1073,10 +1023,6 @@ gst_cheese_face_track_finalize (GObject * obj)
     delete filter->face_detector;
   if (filter->shape_predictor)
     delete filter->shape_predictor;
-  if (filter->camera_matrix)
-    delete filter->camera_matrix;
-  if (filter->dist_coeffs)
-    delete filter->dist_coeffs;
 
   G_OBJECT_CLASS (gst_cheese_face_track_parent_class)->finalize (obj);
 }
