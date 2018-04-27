@@ -70,6 +70,9 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
+#include <string>
+#include <map>
+#include <math.h>
 
 #include "gstcheesefacetrack.h"
 #include "facetrack.h"

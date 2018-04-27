@@ -54,24 +54,10 @@
 #include <graphene-gobject.h>
 #include <gst/opencv/gstopencvvideofilter.h>
 
-#include "opencv2/opencv.hpp"
-#include <opencv2/core/core_c.h>
-#include <opencv2/core/utility.hpp>
+#include <opencv2/opencv.hpp>
 #include <opencv2/tracking.hpp>
-#if (CV_MAJOR_VERSION >= 3)
-#include <opencv2/imgproc/imgproc_c.h>
-#endif
-
-#include <dlib/string.h>
-#include <dlib/image_io.h>
 #include <dlib/image_processing/frontal_face_detector.h>
-#include <dlib/opencv.h>
-#include <dlib/image_processing/render_face_detections.h>
 #include <dlib/image_processing.h>
-
-#include <string>
-#include <map>
-#include <math.h>
 
 #include "Hungarian.h"
 
