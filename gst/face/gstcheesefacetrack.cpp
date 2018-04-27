@@ -323,9 +323,8 @@ struct _GstCheeseFaceTrack
   gchar *landmark;
   GstCheeseFaceTrackTrackerType tracker_type;
   guint tracker_duration;
-  gboolean use_hungarian;
   gboolean use_pose_estimation;
-  guint hungarian_delete_threshold;
+  guint delete_threshold;
   gfloat scale_factor;
   gdouble distance_factor;
   guint detection_gap_duration;
@@ -378,7 +377,7 @@ gst_cheese_face_track_tracker_get_type (void)
   return tracker_type;
 }
 
-#define DEFAULT_HUNGARIAN_DELETE_THRESHOLD                72
+#define DEFAULT_DELETE_THRESHOLD                          72
 #define DEFAULT_SCALE_FACTOR                              1.0
 #define DEFAULT_TRACKER                                   GST_CHEESEFACETRACK_TRACKER_MEDIANFLOW
 #define DEFAULT_DETECTION_GAP_DURATION                    10
@@ -412,8 +411,7 @@ enum
   PROP_LANDMARK,
   PROP_TRACKER,
   PROP_TRACKER_DURATION,
-  PROP_USE_HUNGARIAN,
-  PROP_HUNGARIAN_DELETE_THRESHOLD,
+  PROP_DELETE_THRESHOLD,
   PROP_USE_POSE_ESTIMATION,
   PROP_SCALE_FACTOR,
   PROP_DISTANCE_FACTOR,
@@ -502,19 +500,14 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           "Type of the tracker algorithm to use",
           GST_TYPE_CHEESEFACETRACKER_TRACKER, DEFAULT_TRACKER,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
-  g_object_class_install_property (gobject_class, PROP_USE_HUNGARIAN,
-      g_param_spec_boolean ("use-hungarian", "Display",
-          "Sets whether to use the Hungarian algorithm to matching faces in "
-          "the next frames.",
-          TRUE, (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class,
-      PROP_HUNGARIAN_DELETE_THRESHOLD,
-      g_param_spec_uint ("hungarian-delete-threshold",
-          "Hungarian delete threshold",
+      PROP_DELETE_THRESHOLD,
+      g_param_spec_uint ("delete-threshold",
+          "Delete threshold",
           "Sets the number of frames that need to pass to delete a face if it "
           "has not been detected in that period",
           0, G_MAXUINT,
-          DEFAULT_HUNGARIAN_DELETE_THRESHOLD,
+          DEFAULT_DELETE_THRESHOLD,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_USE_POSE_ESTIMATION,
       g_param_spec_boolean ("use-pose-estimation", "Pose estimation",
@@ -561,9 +554,8 @@ gst_cheese_face_track_init (GstCheeseFaceTrack * filter)
   filter->last_face_id = 0;
   filter->frame_number = INIT_FRAME_COUNTER ();
 
-  filter->use_hungarian = TRUE;
   filter->use_pose_estimation = TRUE;
-  filter->hungarian_delete_threshold = DEFAULT_HUNGARIAN_DELETE_THRESHOLD;
+  filter->delete_threshold = DEFAULT_DELETE_THRESHOLD;
   filter->display_bounding_box = TRUE;
   filter->display_id = TRUE;
   filter->display_pose_estimation = TRUE;
@@ -643,11 +635,8 @@ gst_cheese_face_track_set_property (GObject * object, guint prop_id,
     case PROP_TRACKER_DURATION:
       filter->tracker_duration = g_value_get_uint (value);
       break;
-    case PROP_USE_HUNGARIAN:
-      filter->use_hungarian = g_value_get_boolean (value);
-      break;
-    case PROP_HUNGARIAN_DELETE_THRESHOLD:
-      filter->hungarian_delete_threshold = g_value_get_uint (value);
+    case PROP_DELETE_THRESHOLD:
+      filter->delete_threshold = g_value_get_uint (value);
       break;
     case PROP_USE_POSE_ESTIMATION:
       filter->use_pose_estimation = g_value_get_boolean (value);
@@ -698,11 +687,8 @@ gst_cheese_face_track_get_property (GObject * object, guint prop_id,
     case PROP_DISPLAY_POSE_ESTIMATION:
       g_value_set_boolean (value, filter->display_pose_estimation);
       break;
-    case PROP_USE_HUNGARIAN:
-      g_value_set_boolean (value, filter->use_hungarian);
-      break;
-    case PROP_HUNGARIAN_DELETE_THRESHOLD:
-      g_value_set_uint (value, filter->hungarian_delete_threshold);
+    case PROP_DELETE_THRESHOLD:
+      g_value_set_uint (value, filter->delete_threshold);
       break;
     case PROP_USE_POSE_ESTIMATION:
       g_value_set_boolean (value, filter->use_pose_estimation);
@@ -806,6 +792,31 @@ gst_cheese_face_track_display_face (GstCheeseFaceTrack * filter,
   return face.last_detected_frame () == filter->frame_number;
 }
 
+static std::vector<guint>
+gst_cheese_face_track_try_to_remove_faces (GstCheeseFaceTrack * filter)
+{
+  guint i;
+  std::vector<guint> to_remove;
+  for (auto &kv : *filter->faces) {
+    guint delta_since_detected;
+    guint id = kv.first;
+    CheeseFace &face = kv.second;
+
+    delta_since_detected = filter->frame_number - face.last_detected_frame ();
+    GST_LOG ("Face %d: number of frames passed since last detection of "
+        "face is delta=%d.", id, delta_since_detected);
+
+    if (delta_since_detected > filter->delete_threshold) {
+      GST_LOG ("Face %d will be deleted: "
+          "delta=%d > delete-threshold=%d.", id,
+          delta_since_detected, filter->delete_threshold);
+      to_remove.push_back (id);
+    }
+  }
+
+  return to_remove;
+}
+
 static GstFlowReturn
 gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
     GstBuffer * buf, IplImage * img)
@@ -821,6 +832,8 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
   // cv_uimg = cv_img.getUMat (cv::ACCESS_WRITE);
   //std::vector<CheeseFace &> faces_with_lost_target;
   std::vector<guint> faces_ids_with_lost_target;
+  std::vector<guint> faces_ids_to_remove;
+  guint i;
 
   gst_cheese_face_track_try_scale_image (filter, cv_img, cv_resized_img);
   dlib_resized_img = cv_image<bgr_pixel> (cv_resized_img);
@@ -830,32 +843,15 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
   GST_DEBUG ("Frame number: %d.", filter->frame_number);
 
   multiface_meta = gst_buffer_add_cheese_multiface_meta (buf);
-  if (filter->use_hungarian) {
-    guint i;
-    std::vector<guint> to_remove;
-    for (auto &kv : *filter->faces) {
-      guint delta_since_detected;
-      guint id = kv.first;
-      CheeseFace &face = kv.second;
 
-      delta_since_detected = filter->frame_number - face.last_detected_frame ();
-      GST_LOG ("Face %d: number of frames passed since last detection of "
-          "face is delta=%d.", id, delta_since_detected);
-
-      if (delta_since_detected > filter->hungarian_delete_threshold) {
-        GST_LOG ("Face %d will be deleted: "
-            "delta=%d > hungarian-delete-threshold=%d.", id,
-            delta_since_detected, filter->hungarian_delete_threshold);
-        to_remove.push_back (id);
-      }
-    }
-
-    for (i = 0; i < to_remove.size (); i++) {
-      filter->faces->erase (to_remove[i]);
-      gst_cheese_multiface_meta_add_removed_face_id (multiface_meta,
-          to_remove[i]);
-      GST_LOG ("Face %d: this face has just been deleted.", to_remove[i]);
-    }
+  /* If there are faces to remove add them to the metadata. */
+  faces_ids_to_remove = gst_cheese_face_track_try_to_remove_faces (filter);
+  for (i = 0; i < faces_ids_to_remove.size (); i++) {
+    filter->faces->erase (faces_ids_to_remove[i]);
+    gst_cheese_multiface_meta_add_removed_face_id (multiface_meta,
+        faces_ids_to_remove[i]);
+    GST_LOG ("Face %d: this face has just been deleted.",
+        faces_ids_to_remove[i]);
   }
 
   for (auto &kv : *filter->faces) {
