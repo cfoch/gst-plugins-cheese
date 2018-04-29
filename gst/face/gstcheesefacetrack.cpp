@@ -301,11 +301,14 @@ gst_cheese_face_track_class_init (GstCheeseFaceTrackClass * klass)
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
 
-  gst_element_class_set_details_simple(gstelement_class,
-    "CheeseFaceTracker",
-    "FIXME:Generic",
-    "FIXME:Generic Template Element",
-    "Fabian Orccon <<user@hostname.org>>");
+  gst_element_class_set_details_simple (gstelement_class,
+    "cheesefacetrack",
+    "Filter/Effect/Video",
+    "Performs multiple face tracking and detects facial landmarks. It works by "
+    "a cycle of tracking bursts followed by face detection in order to "
+    "robustly track faces. This filter preserves identity of faces for a long "
+    "time.",
+    "Fabian Orccon <cfoch.fabian@gmail.com>");
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&src_factory));
