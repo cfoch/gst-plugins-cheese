@@ -118,7 +118,7 @@ struct _GstCheeseFaceTrack
   GHashTable *face_table;
 };
 
-struct _GstCheeseFaceTrackClass 
+struct _GstCheeseFaceTrackClass
 {
   GstOpencvVideoFilterClass parent_class;
 
