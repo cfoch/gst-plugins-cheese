@@ -113,14 +113,12 @@ static void
 face_overlay_data_set_face_info (FaceOverlayData * self,
     GstCheeseFaceInfo * face_info)
 {
-  gst_mini_object_unref (GST_MINI_OBJECT (self->face_info));
   self->face_info = face_info;
 }
 
 static void
 face_overlay_data_free (FaceOverlayData * self)
 {
-  gst_mini_object_unref (GST_MINI_OBJECT (self->face_info));
   g_free (self);
 }
 
@@ -456,9 +454,11 @@ probe_overlay_buffer (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
           /* Calculate which sprite to use */
           sprite = gst_cheese_face_overlay_get_sprite_by_face_id (filter,
               face_id);
-          if (!sprite)
+          if (!sprite) {
             GST_WARNING ("Face %d: not possible to assign a sprite for this"
                 "face.", face_id);
+            continue;
+          }
           /* Creating the face overlay data which holds an sprite */
           face_overlay_data = face_overlay_data_new (face_info, sprite,
               filter->frame_counter);
