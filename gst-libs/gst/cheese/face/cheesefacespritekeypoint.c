@@ -57,7 +57,8 @@ cheese_face_keypoint_get_type (void)
       { CHEESE_FACE_KEYPOINT_LEFT_EAR, "Left Ear", "left-ear" },
       { CHEESE_FACE_KEYPOINT_RIGHT_EAR, "Right Ear", "right-ear" },
       { CHEESE_FACE_KEYPOINT_FACE, "Face", "face" },
-      { CHEESE_FACE_KEYPOINT_HEAD, "Head", "head" }
+      { CHEESE_FACE_KEYPOINT_HEAD, "Head", "head" },
+      { NULL, NULL, NULL}
     };
     cheese_face_keypoiny_type = g_enum_register_static ("CheeseFaceKeypoint",
         keypoint_types);

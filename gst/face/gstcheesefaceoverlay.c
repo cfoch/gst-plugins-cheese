@@ -280,6 +280,7 @@ face_overlay_data_get_keypoint_pixinfo (FaceOverlayData * self,
       /* Average */
       pt->x /= 2;
       pt->y /= 2;
+      break;
     default:
       GST_WARNING ("Face %d: No valid CheeseFaceKeypoint type found.", face_id);
       ret = FALSE;
