@@ -57,6 +57,68 @@ A tool that may help you to see what happens frame by frame.
 python3 stepper.py -v people.ogv -l shape_predictor_68_face_landmarks.dat
 ```
 
+### Facetrack filter
+
+A filter that based on OpenCV and dlib detects multiple faces and track them.
+This filter is more "smooth" than _gstcheesefacedetect_, since it uses a Median
+Flow tracker. It works by detecting faces in the first frame and tracking them
+in the next N frames, and repeating this cycle. In the case the tracker loses
+its target, faces are detected again and remapped with the Hungarian Algorithm.
+
+More information can be found in this [document](https://cfoch.github.io/assets/tesis/tesis.pdf)
+
+![alt text](docs/img/track.gif "cheesefacetrack preview")
+```
+gst-launch-1.0 v4l2src ! videoconvert ! cheesefacetrack scale-factor=0.5 landmark=shape_predictor_68_face_landmarks.dat display-landmark=true ! videoconvert ! xvimagesink
+```
+
+### Faceoverlay filter
+
+A filter that linked to _gstcheesefacetrack_ can overlay images over facial
+keypoints of tracked faces. Multiple images can be assigned to one face for
+different facial keypoints and per frame and duration, so an complex animation
+can be created.
+
+More information can be found in this [document](https://cfoch.github.io/assets/tesis/tesis.pdf)
+
+![alt text](docs/img/overlay.gif "cheesefaceoverlay preview")
+
+```
+gst-launch-1.0 v4l2src ! videoconvert ! cheesefacetrack scale-factor=0.5 landmark=shape_predictor_68_face_landmarks.dat display-landmark=true ! videoconvert ! faceoverlay location=sprite.json ! videoconvert ! xvimagesink
+```
+
+Example of JSON file:
+```json
+[
+    {
+        "left-eye": {
+            "rotate": true,
+            "loop": true,
+            "base-scale-factor": 1.0,
+            "frames": [
+                {
+                    "base-scale-factor": 0.4,
+                    "duration": 1,
+                    "location": "/path/to/gst-plugins-cheese/docs/img/eye.png"
+                }
+            ]
+        },
+        "right-eye": {
+            "rotate": true,
+            "loop": true,
+            "base-scale-factor": 1.0,
+            "frames": [
+                {
+                    "base-scale-factor": 0.4,
+                    "duration": 1,
+                    "location": "/path/to/gst-plugins-cheese/docs/img/eye.png"
+                }
+            ]
+        }
+    }
+]
+```
+
 ## License
 
 LGPLv2
