@@ -10,10 +10,11 @@ face_sources = [
   join_paths(hungariandir, 'Hungarian.cpp')
 ]
 
-opencv_dep = dependency('opencv', version : ['>= 2.3.0', '< 3.5.0'],
-  required : true)
-dlib_dep = dependency('dlib-1', version : ['>= 19.0.0', '< 19.9.0'],
-  required : true)
+opencv_dep = dependency('opencv', version : '>= 3.0.0', required : false)
+if not opencv_dep.found()
+  opencv_dep = dependency('opencv4', version : '>= 4.0.0', required : false)
+endif
+dlib_dep = dependency('dlib-1', version : ['>= 19.0.0'], required : true)
 graphene_dep = dependency('graphene-1.0', version : ['>= 1.7.0'],
   required : true)
 graphene_gobject_dep = dependency('graphene-gobject-1.0',

@@ -155,7 +155,7 @@ static void gst_cheese_face_omelette_set_property (GObject * object,
 static void gst_cheese_face_omelette_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec);
 static GstFlowReturn gst_cheese_face_omelette_transform_ip (
-    GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
+    GstOpencvVideoFilter * filter, GstBuffer * buf, cv::Mat img);
 
 /* Omelette per face data */
 static OmeletteData * omelette_data_new (GstCheeseFaceOmelette * filter);
@@ -295,7 +295,7 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
   GST_LOG ("Loading image file '%s'.", OMELETTE_ASSETS_DIR "omelette.png");
   filter->omelette = new cv::UMat;
   img = cv::imread (OMELETTE_ASSETS_DIR "omelette.png",
-      CV_LOAD_IMAGE_UNCHANGED);
+      cv::IMREAD_UNCHANGED);
   if (!img.data)
     goto load_resources_error;
   *filter->omelette = img.getUMat(cv::ACCESS_READ);
@@ -303,7 +303,7 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
   GST_LOG ("Loading image file '%s'.",
       OMELETTE_ASSETS_DIR "omelette-oregano.png");
   img = cv::imread (OMELETTE_ASSETS_DIR "omelette-oregano.png",
-      CV_LOAD_IMAGE_UNCHANGED);
+      cv::IMREAD_UNCHANGED);
   filter->omelette_oregano = new cv::UMat;
   if (!img.data)
     goto load_resources_error;
@@ -314,7 +314,7 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
     filter->cheeses[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "cheese-%d.png", i + 1);
     GST_LOG ("Loading image file '%s'.", filename);
-    img = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
+    img = cv::imread (filename, cv::IMREAD_UNCHANGED);
     g_free (filename);
     if (!img.data)
       goto load_resources_error;
@@ -326,7 +326,7 @@ gst_cheese_face_omelette_init (GstCheeseFaceOmelette * filter)
     filter->tomatoes[i] = new cv::UMat;
     filename = g_strdup_printf (OMELETTE_ASSETS_DIR "tomato-%d.png", i + 1);
     GST_LOG ("Loading image file '%s'.", filename);
-    img = cv::imread (filename, CV_LOAD_IMAGE_UNCHANGED);
+    img = cv::imread (filename, cv::IMREAD_UNCHANGED);
     g_free (filename);
     if (!img.data)
       goto load_resources_error;
@@ -436,7 +436,7 @@ _draw_polygons_to_mask (cv::UMat & umask,
 
 static GstFlowReturn
 gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
-    GstBuffer * buf, IplImage * img)
+    GstBuffer * buf, cv::Mat cvImg)
 {
   guint i, j;
   const gboolean debug = gst_debug_is_active ();
@@ -447,10 +447,9 @@ gst_cheese_face_omelette_transform_ip (GstOpencvVideoFilter * base,
   GstCheeseFaceOmelette *filter = GST_CHEESEFACEOMELETTE (base);
 
   if (filter->resources_loaded && parent_filter->shape_predictor)
-    ret = bclass->cv_trans_ip_func (base, buf, img);
+    ret = bclass->cv_trans_ip_func (base, buf, cvImg);
 
   if (ret == GST_FLOW_OK) {
-    cv::Mat cvImg (cv::cvarrToMat (img));
     cv::Size sz = cvImg.size ();
     cv::Rect rect (cv::Point (0, 0), sz);
     /* Dumbness */

@@ -89,7 +89,7 @@ static void gst_cheese_face_track_set_property (GObject * object,
 static void gst_cheese_face_track_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec);
 static GstFlowReturn gst_cheese_face_track_transform_ip (
-    GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
+    GstOpencvVideoFilter * filter, GstBuffer * buf, cv::Mat cv_img);
 
 struct _GstCheeseFaceTrack
 {
@@ -552,13 +552,12 @@ gst_cheese_face_track_try_to_remove_faces (GstCheeseFaceTrack * filter)
 
 static GstFlowReturn
 gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
-    GstBuffer * buf, IplImage * img)
+    GstBuffer * buf, cv::Mat cv_img)
 {
   GstCheeseFaceTrack *filter = GST_CHEESEFACETRACK (base);
   GstCheeseMultifaceMeta *multiface_meta;
   /* Frame storage */
-  cv::Mat cv_img (cv::cvarrToMat (img));
-  cv::Mat cv_resized_img (cv::cvarrToMat (img));
+  cv::Mat cv_resized_img (cv_img);
   std::vector<dlib::rectangle> resized_dets;
   dlib::cv_image<bgr_pixel> dlib_resized_img;
   std::vector<guint> faces_ids_with_lost_target;
@@ -754,7 +753,7 @@ gst_cheese_face_track_transform_ip (GstOpencvVideoFilter * base,
           /* Draw */
           if (display && filter->display_landmark) {
             cv::circle(cv_img, resized_keypoint / filter->scale_factor, 1,
-                DEFAULT_LANDMARK_COLOR, CV_FILLED);
+                DEFAULT_LANDMARK_COLOR, cv::FILLED);
           }
         }
         face.set_landmark (landmark);

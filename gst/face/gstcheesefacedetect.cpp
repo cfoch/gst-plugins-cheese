@@ -133,7 +133,7 @@ static void gst_cheese_face_detect_set_property (GObject * object,
 static void gst_cheese_face_detect_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec);
 static GstFlowReturn gst_cheese_face_detect_transform_ip (
-    GstOpencvVideoFilter * filter, GstBuffer * buf, IplImage * img);
+    GstOpencvVideoFilter * filter, GstBuffer * buf, cv::Mat img);
 
 /* GObject vmethod implementations */
 
@@ -435,7 +435,7 @@ cv::Mat rot2euler(const cv::Mat & rotationMatrix)
  */
 static GstFlowReturn
 gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
-    GstBuffer * buf, IplImage * img)
+    GstBuffer * buf, cv::Mat cvImg)
 {
   guint i, j;
   GValue faces_values = G_VALUE_INIT;
@@ -445,7 +445,6 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   /* TODO */
   /* Handle more cases for posting messages like gstfacedetect. */
   gboolean post_msg = TRUE;
-  cv::Mat cvImg (cv::cvarrToMat (img));
   cv::Mat resizedImg;
   cv_image<bgr_pixel> dlib_img;
   gboolean debug = gst_debug_is_active ();
@@ -462,7 +461,7 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
 
   if (debug)
     time_total = cv::getTickCount ();
-  GST_LOG ("Frame size: %d (height) x %d (width).", img->height, img->width);
+  GST_LOG ("Frame size: %d (height) x %d (width).", cvImg.rows, cvImg.cols);
 
   if (post_msg)
     time_post = 0;
@@ -482,8 +481,8 @@ gst_cheese_face_detect_transform_ip (GstOpencvVideoFilter * base,
   if (filter->scale_factor != 1.0) {
     if (debug)
       start = cv::getTickCount ();
-    cv::resize(cvImg, resizedImg, cv::Size(img->width * filter->scale_factor,
-        img->height * filter->scale_factor));
+    cv::resize(cvImg, resizedImg, cv::Size(cvImg.cols * filter->scale_factor,
+        cvImg.rows * filter->scale_factor));
     if (debug) {
       end = cv::getTickCount ();
       time_scale_down = end - start;
