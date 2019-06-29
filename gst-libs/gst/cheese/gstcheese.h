@@ -1,0 +1,8 @@
+#include "face/cheesefaceinfo.h"
+#include "face/cheesefaceoverlay.h"
+#include "face/cheesefacespriteframe.h"
+#include "face/cheesefacesprite.h"
+#include "face/cheesefacespritekeypoint.h"
+#include "face/cheesemultifaceinfo.h"
+#include "face/cheesemultifacemeta.h"
+#include "face/cheesemultifacesprite.h"
