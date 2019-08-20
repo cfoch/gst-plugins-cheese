@@ -64,6 +64,8 @@ typedef enum
   CHEESE_FACE_KEYPOINT_HEAD
 } CheeseFaceKeypoint;
 
+
+GType cheese_face_keypoint_get_type (void);
 #define CHEESE_TYPE_FACE_KEYPOINT (cheese_face_keypoint_get_type ())
 
 #define CHEESE_TYPE_FACE_SPRITE_KEYPOINT cheese_face_sprite_keypoint_get_type ()
