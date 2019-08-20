@@ -1,0 +1,201 @@
+{
+    "app-id": "io.github.cfoch.gst_plugins_cheese",
+    "branch": "@BRANCH@",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "3.32",
+    "finish-args": [
+        "--socket=x11",
+        "--share=ipc",
+        "--share=network",
+        "--socket=pulseaudio",
+        "--socket=wayland",
+        "--filesystem=xdg-run/dconf",
+        "--filesystem=~/.config/dconf:ro",
+        "--talk-name=ca.desrt.dconf",
+        "--env=DCONF_USER_CONFIG_DIR=.config/dconf",
+        "--talk-name=org.freedesktop.Notifications",
+        "--filesystem=host",
+        "--device=dri",
+        "--device=all"
+    ],
+    "sdk": "org.gnome.Sdk",
+    "build-options": {
+        "cflags": "-O2 -g",
+        "cxxflags": "-O2 -g",
+        "env": {
+            "PYTHON": "python3",
+            "GST_PLUGIN_SYSTEM_PATH": "/app/lib/gstreamer-1.0/",
+            "FREI0R_PATH": "/app/lib/frei0r-1/"
+        },
+        "strip": false,
+        "no-debuginfo": true
+    },
+    "modules": [
+        {
+            "name": "opencv",
+            "buildsystem": "cmake",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DOPENCV_GENERATE_PKGCONFIG=1",
+
+                "-DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules",
+                "-DBUILD_LIST=core,imgproc,imgcodecs,bgsegm,plot,tracking",
+                "-DBUILD_TESTS=OFF",
+                "-DINSTALL_PYTHON_EXAMPLES=OFF",
+                "-DBUILD_EXAMPLES=OFF"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "branch": "4.1.0",
+                    "url": "https://github.com/opencv/opencv"
+                },
+                {
+                    "type": "git",
+                    "branch": "4.1.0",
+                    "url": "https://github.com/opencv/opencv_contrib",
+                    "dest": "opencv_contrib"
+                }
+            ]
+        },
+        {
+            "name": "dlib",
+            "buildsystem": "cmake",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DUSE_SSE4_INSTRUCTIONS=ON",
+                "-DCMAKE_POSITION_INDEPENDENT_CODE=true",
+                "-DCMAKE_INSTALL_PREFIX=/app"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "branch": "v19.17",
+                    "url": "https://github.com/davisking/dlib"
+                }
+            ]
+        },
+        {
+            "name": "gstreamer",
+            "buildsystem": "meson",
+            "builddir": true,
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "--libdir=lib"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer.git",
+                    "branch": "1.16.0"
+                }
+            ]
+        },
+        {
+            "name": "gst-plugins-base",
+            "buildsystem": "meson",
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "-Dorc=enabled",
+                "--libdir=lib",
+                "--wrap-mode=nodownload"
+            ],
+            "builddir": true,
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-base.git",
+                    "branch": "1.16.0"
+                }
+            ]
+        },
+        {
+            "name": "gst-plugins-good",
+            "buildsystem": "meson",
+            "builddir": true,
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "--libdir=lib"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-good.git",
+                    "branch": "1.16.0"
+                }
+            ]
+        },
+        {
+            "name": "gst-plugins-ugly",
+            "buildsystem": "meson",
+            "builddir": true,
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "--libdir=lib"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-ugly.git",
+                    "branch": "1.16.0"
+                }
+            ]
+        },
+        {
+            "name": "gst-plugins-bad",
+            "buildsystem": "meson",
+            "builddir": true,
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "--libdir=lib"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-bad.git",
+                    "branch": "1.16.0"
+                },
+                {
+                    "type": "patch",
+                    "path": "patches/0001-opencv-Allow-to-build-using-opencv-4.patch"
+                }
+            ]
+        },
+        {
+            "name": "gsl",
+            "buildsystem": "cmake",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_INSTALL_PREFIX=/app"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/ampl/gsl",
+                    "branch": "v2.5.0"
+                }
+            ]
+        },
+        {
+            "name": "gst-plugins-cheese",
+            "buildsystem": "meson",
+            "builddir": true,
+            "config-opts": [
+                "-Dgtk_doc=disabled",
+                "-Doptimization=3",
+                "--buildtype=release",
+                "--libdir=lib"
+            ],
+            "run-tests": true,
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "..",
+                    "branch": "@GIT_CLONE_BRANCH@"
+                }
+            ]
+        }
+    ]
+}

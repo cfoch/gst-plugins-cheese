@@ -1,0 +1,47 @@
+From 887a4b5f34a42311dfbf696be9064b079d2e838c Mon Sep 17 00:00:00 2001
+From: Fabian Orccon <cfoch.fabian@gmail.com>
+Date: Sun, 30 Dec 2018 21:44:20 -0500
+Subject: [PATCH] opencv: Allow to build using opencv 4
+
+---
+ ext/opencv/gstsegmentation.h | 3 ++-
+ ext/opencv/meson.build       | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/ext/opencv/gstsegmentation.h b/ext/opencv/gstsegmentation.h
+index a24c20516..7212b8baf 100644
+--- a/ext/opencv/gstsegmentation.h
++++ b/ext/opencv/gstsegmentation.h
+@@ -52,6 +52,7 @@
+ #include <opencv2/bgsegm.hpp>
+ 
+ G_BEGIN_DECLS
++
+ /* #defines don't like whitespacey bits */
+ #define GST_TYPE_SEGMENTATION \
+   (gst_segmentation_get_type())
+@@ -105,7 +106,7 @@ struct _GstSegmentation
+   int learning_interval;
+   
+   /* for MOG methods */
+-  cv::Ptr<cv::BackgroundSubtractor> mog;                   /* cv::BackgroundSubtractorMOG */
++  cv::Ptr<cv::bgsegm::BackgroundSubtractorMOG> mog;             /* cv::BackgroundSubtractorMOG */
+   cv::Ptr<cv::BackgroundSubtractorMOG2> mog2;                   /* cv::BackgroundSubtractorMOG2 */
+ 
+   double learning_rate;
+diff --git a/ext/opencv/meson.build b/ext/opencv/meson.build
+index d0ce1d3ee..e9d25fc9a 100644
+--- a/ext/opencv/meson.build
++++ b/ext/opencv/meson.build
+@@ -65,7 +65,7 @@ if opencv_found
+     endif
+   endforeach
+ else
+-  opencv_dep = dependency('opencv4', version : ['>= 4.0.0', '< 4.1.0'], required : false)
++  opencv_dep = dependency('opencv4', version : ['>= 4.0.0', '< 4.1.0'], required : false, method : 'pkg-config')
+   opencv_found = opencv_dep.found()
+   if opencv_found
+     foreach h : libopencv4_headers
+-- 
+2.20.1
+
