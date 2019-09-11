@@ -20,10 +20,40 @@ ninja
 ninja install
 ```
 
+### Build with Flatpak
+
+The easiest way to try this is with flatpak. This procedure will also take care of building the dependencies.
+
+Clone submodules:
+
+    git submodule update --init --recursive
+
+Install the flathub remote. See https://flatpak.org/setup/
+
+Istall the GNOME SDK:
+
+    flatpak install org.gnome.Sdk//3.32
+
+Run the build script:
+
+    ./tools/build-flatpak.sh
+
+Install the built flatpak bundle:
+
+    sudo flatpak install --bundle io.github.cfoch.gst_plugins_cheese.flatpak
+
 ## Usage
 
 Firstly, you need a trained shape (landmark) predictor. You can get one from
 [*dlib-modes* ](https://github.com/davisking/dlib-models/blob/master/shape_predictor_68_face_landmarks.dat.bz2)
+
+## Usage from Flatpak
+
+If you have built a flatpak, start a bash interpreter in the sandbox with:
+
+    flatpak run --command=bash io.github.cfoch.gst_plugins_cheese
+
+And then run the commands below, the ones starting with `gst-launch-1.0 ...`.
 
 ### Facedetect filter
 
